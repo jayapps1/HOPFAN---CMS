@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.env.*
+logs/
+backups/
+.idea/
+.vscode/
+*.bak
+assets/member_photos/
+ui_preferences.json
