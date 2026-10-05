@@ -184,8 +184,7 @@ class AuthService:
                     )
                 )
 
-            # Password was correct.
-            # TOTP must still be completed.
+            # Password sign-in is complete; authenticator sign-in is an alternative.
             user.failed_login_attempts = 0
             user.locked_until = None
 

@@ -16,6 +16,7 @@ from src.ui.dashboard.dashboard_view import (
 from src.ui.login.login_view import (
     LoginView,
 )
+from src.ui import theme
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -33,6 +34,7 @@ class HopfanApplication:
         )
 
         self.root = ctk.CTk()
+        theme.configure_typography(self.root)
 
         self.root.title(
             "HOPFAN Church Management System"
@@ -43,8 +45,8 @@ class HopfanApplication:
         )
 
         self.root.minsize(
-            1100,
-            700,
+            min(1100, self.root.winfo_screenwidth()-60),
+            min(640, self.root.winfo_screenheight()-100),
         )
 
         # -------------------------------------------------
@@ -99,40 +101,25 @@ class HopfanApplication:
 
     def center_window(self):
         self.root.update_idletasks()
+        scale = self.root._get_window_scaling()
+        area_x, area_y, area_width, area_height = theme.desktop_work_area(self.root)
+        caption = max(28, self.root.winfo_rooty()-self.root.winfo_y())
 
         width = min(
             1360,
-            self.root.winfo_screenwidth()
-            - 30,
+            int((area_width-30) / scale),
         )
 
         height = min(
             820,
-            self.root.winfo_screenheight()
-            - 70,
+            int((area_height-caption-30) / scale),
         )
 
-        x = max(
-            0,
-            (
-                self.root.winfo_screenwidth()
-                - width
-            )
-            // 2,
-        )
+        x = area_x + max(0, (area_width-width*scale)//2)
+        y = area_y + max(0, (area_height-height*scale-caption)//2)
 
-        y = max(
-            0,
-            (
-                self.root.winfo_screenheight()
-                - height
-            )
-            // 2,
-        )
-
-        self.root.geometry(
-            f"{width}x{height}+{x}+{y}"
-        )
+        self.root.minsize(min(1100, width), min(640, height))
+        self.root.geometry(f"{width}x{height}+{int(x)}+{int(y)}")
 
     # =====================================================
     # ACTIVITY / SESSION

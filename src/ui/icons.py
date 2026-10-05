@@ -269,6 +269,17 @@ def _draw(name, color, size):
             width=w,
         )
 
+    elif name == "calendar":
+        stroke = max(1, size//16)
+        margin = max(2, size//8)
+        d.rounded_rectangle((margin, 2*margin, size-margin, size-margin), radius=stroke, outline=color, width=stroke)
+        d.line((margin, size*2//5, size-margin, size*2//5), fill=color, width=stroke)
+        for x in (size//3, size*2//3):
+            d.line((x, margin, x, 2*margin+stroke), fill=color, width=stroke)
+        for x in (size*2//5, size*3//5):
+            for y in (size*3//5, size*4//5):
+                d.rectangle((x, y, x+stroke-1, y+stroke-1), fill=color)
+
     elif name == "attendance":
         d.rounded_rectangle(
             (

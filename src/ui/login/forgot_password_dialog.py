@@ -1,441 +1,84 @@
+"""Fixed-footer password recovery, retaining the existing email/TOTP/reset flow."""
 import customtkinter as ctk
-
-from src.services.auth_service import (
-    PasswordRecoveryError,
-)
-from src.ui import theme
+from src.services.auth_service import PasswordRecoveryError
+from src.ui.components.modern import ActionButton, FixedFooterDialog, ModernEntry, label
+from src.ui.components.async_loader import AsyncLoader
 from src.ui.components.totp_input import TotpInput
 
 
-class ForgotPasswordDialog(
-    ctk.CTkToplevel
-):
-    def __init__(
-        self,
-        master,
-        auth_service,
-    ):
-        super().__init__(
-            master
-        )
-
-        self.auth_service = auth_service
-
-        self.user_id = None
-
-        self.email_var = ctk.StringVar()
-        self.password_var = ctk.StringVar()
-        self.confirm_var = ctk.StringVar()
-        self.status_var = ctk.StringVar()
-
-        self.title(
-            "Recover HOPFAN Account"
-        )
-
-        self.geometry(
-            "500x560"
-        )
-
-        self.resizable(
-            False,
-            False,
-        )
-
-        self.transient(
-            master
-        )
-
-        self.grab_set()
-
-        self.container = ctk.CTkFrame(
-            self,
-            fg_color=theme.BACKGROUND,
-            corner_radius=0,
-        )
-
-        self.container.pack(
-            fill="both",
-            expand=True,
-        )
-
+class ForgotPasswordDialog(FixedFooterDialog):
+    def __init__(self, master, auth_service):
+        super().__init__(master, 'Recover account', 'Verify your account to create a new password.', width=580, height=560)
+        self.auth_service, self.user_id = auth_service, None
+        self.loader = AsyncLoader(self)
+        self.email_var, self.password_var, self.confirm_var = [ctk.StringVar(master=self) for _ in range(3)]
+        self.next_button = ActionButton(self.footer, 'Continue', self.start_recovery, 'primary')
+        self.next_button.pack(side='right', padx=18, pady=14)
         self.show_email_step()
 
     def clear_content(self):
-        for widget in (
-            self.container.winfo_children()
-        ):
-            widget.destroy()
+        for child in self.content.winfo_children():
+            child.destroy()
+        self.error_var.set('')
 
-        self.status_var.set("")
-
-    def page(self):
-        frame = ctk.CTkFrame(
-            self.container,
-            fg_color="transparent",
-        )
-
-        frame.pack(
-            fill="both",
-            expand=True,
-            padx=48,
-            pady=45,
-        )
-
-        return frame
-
-    # -------------------------------------------------
-    # EMAIL
-    # -------------------------------------------------
+    def entry(self, title, variable, secret=False):
+        label(self.content, title, 12, True).pack(anchor='w', padx=16, pady=(16,4))
+        entry = ModernEntry(self.content, textvariable=variable, show='•' if secret else '')
+        entry.pack(fill='x', padx=16)
+        return entry
 
     def show_email_step(self):
         self.clear_content()
+        self.entry('Email address', self.email_var).focus_set()
+        label(self.content, 'Use the email address registered to your account.', muted=True, wraplength=450).pack(anchor='w', padx=16, pady=16)
 
-        frame = self.page()
-
-        ctk.CTkLabel(
-            frame,
-            text="Forgot your password?",
-            font=(
-                theme.FONT_FAMILY,
-                24,
-                "bold",
-            ),
-            text_color=theme.TEXT,
-        ).pack(
-            anchor="w"
-        )
-
-        ctk.CTkLabel(
-            frame,
-            text=(
-                "Enter your account email. "
-                "We will verify your identity using "
-                "your authenticator app."
-            ),
-            font=(
-                theme.FONT_FAMILY,
-                11,
-            ),
-            text_color=theme.TEXT_MUTED,
-            justify="left",
-            wraplength=390,
-        ).pack(
-            anchor="w",
-            pady=(8, 28),
-        )
-
-        entry = ctk.CTkEntry(
-            frame,
-            textvariable=self.email_var,
-            placeholder_text="Email address",
-            height=50,
-            corner_radius=12,
-            fg_color=theme.INPUT,
-            border_color=theme.BORDER,
-            text_color=theme.TEXT,
-        )
-
-        entry.pack(
-            fill="x"
-        )
-
-        self._status(
-            frame
-        )
-
-        ctk.CTkButton(
-            frame,
-            text="Continue",
-            height=48,
-            corner_radius=12,
-            fg_color=theme.SECONDARY,
-            hover_color=theme.SECONDARY_HOVER,
-            command=self.start_recovery,
-        ).pack(
-            fill="x",
-            pady=(18, 0),
-        )
-
-        entry.focus_set()
+    def request(self, operation, success):
+        self.next_button.configure(state='disabled')
+        def done(result):
+            self.next_button.configure(state='normal')
+            success(result)
+        def failed(error):
+            self.next_button.configure(state='normal')
+            self.error_var.set(str(error) if isinstance(error, PasswordRecoveryError) else 'Unable to recover this account. Please retry.')
+            if hasattr(self, 'totp_input') and self.totp_input.winfo_exists():
+                self.totp_input.clear()
+        self.loader.submit('recovery', operation, done, failed)
 
     def start_recovery(self):
-        try:
-            self.user_id = (
-                self.auth_service
-                .prepare_password_recovery(
-                    self.email_var.get()
-                )
-            )
-
-        except PasswordRecoveryError as exc:
-            self.status_var.set(
-                str(exc)
-            )
-            return
-
-        self.show_totp_step()
-
-    # -------------------------------------------------
-    # TOTP
-    # -------------------------------------------------
+        email = self.email_var.get().strip()
+        if not email:
+            self.error_var.set('Enter your email address.'); return
+        def ready(user_id):
+            self.user_id = user_id
+            self.show_totp_step()
+        self.request(lambda: self.auth_service.prepare_password_recovery(email), ready)
 
     def show_totp_step(self):
         self.clear_content()
-
-        frame = self.page()
-
-        ctk.CTkLabel(
-            frame,
-            text="Verify your identity",
-            font=(
-                theme.FONT_FAMILY,
-                24,
-                "bold",
-            ),
-            text_color=theme.TEXT,
-        ).pack(
-            anchor="w"
-        )
-
-        ctk.CTkLabel(
-            frame,
-            text=(
-                "Enter the 6-digit code from your "
-                "authenticator app."
-            ),
-            font=(
-                theme.FONT_FAMILY,
-                11,
-            ),
-            text_color=theme.TEXT_MUTED,
-        ).pack(
-            anchor="w",
-            pady=(8, 30),
-        )
-
-        self.totp_input = TotpInput(
-            frame,
-            on_complete=self.verify_totp,
-        )
-
-        self.totp_input.pack(
-            pady=(5, 10),
-        )
-
-        self._status(
-            frame
-        )
-
-        ctk.CTkButton(
-            frame,
-            text="Back",
-            fg_color="transparent",
-            hover_color=theme.SURFACE_ALT,
-            border_width=1,
-            border_color=theme.BORDER,
-            text_color=theme.TEXT,
-            command=self.show_email_step,
-        ).pack(
-            pady=(28, 0),
-        )
-
+        label(self.content, 'Authenticator code', 17, True).pack(anchor='w', padx=16, pady=16)
+        self.totp_input = TotpInput(self.content, on_complete=self.verify_totp)
+        self.totp_input.pack(pady=8)
+        label(self.content, 'Enter your six-digit authenticator code to verify your identity.', muted=True, wraplength=450).pack(padx=16,pady=16)
+        self.next_button.pack_forget()
         self.totp_input.focus_first()
 
-    def verify_totp(
-        self,
-        code,
-    ):
-        try:
-            self.auth_service.verify_recovery_totp(
-                self.user_id,
-                code,
-            )
-
-        except PasswordRecoveryError as exc:
-            self.status_var.set(
-                str(exc)
-            )
-
-            self.totp_input.clear()
-            return
-
-        self.show_new_password_step()
-
-    # -------------------------------------------------
-    # NEW PASSWORD
-    # -------------------------------------------------
+    def verify_totp(self, code):
+        self.request(lambda: self.auth_service.verify_recovery_totp(self.user_id, code), lambda _: self.show_new_password_step())
 
     def show_new_password_step(self):
         self.clear_content()
-
-        frame = self.page()
-
-        ctk.CTkLabel(
-            frame,
-            text="Create a new password",
-            font=(
-                theme.FONT_FAMILY,
-                24,
-                "bold",
-            ),
-            text_color=theme.TEXT,
-        ).pack(
-            anchor="w"
-        )
-
-        ctk.CTkLabel(
-            frame,
-            text=(
-                "Use at least 10 characters with "
-                "uppercase, lowercase, number and "
-                "special character."
-            ),
-            font=(
-                theme.FONT_FAMILY,
-                10,
-            ),
-            text_color=theme.TEXT_MUTED,
-            justify="left",
-            wraplength=390,
-        ).pack(
-            anchor="w",
-            pady=(8, 25),
-        )
-
-        password = ctk.CTkEntry(
-            frame,
-            textvariable=self.password_var,
-            placeholder_text="New password",
-            show="•",
-            height=50,
-            corner_radius=12,
-            fg_color=theme.INPUT,
-            border_color=theme.BORDER,
-        )
-
-        password.pack(
-            fill="x"
-        )
-
-        confirm = ctk.CTkEntry(
-            frame,
-            textvariable=self.confirm_var,
-            placeholder_text="Confirm new password",
-            show="•",
-            height=50,
-            corner_radius=12,
-            fg_color=theme.INPUT,
-            border_color=theme.BORDER,
-        )
-
-        confirm.pack(
-            fill="x",
-            pady=(14, 0),
-        )
-
-        self._status(
-            frame
-        )
-
-        ctk.CTkButton(
-            frame,
-            text="Reset password",
-            height=48,
-            corner_radius=12,
-            fg_color=theme.SECONDARY,
-            hover_color=theme.SECONDARY_HOVER,
-            command=self.save_password,
-        ).pack(
-            fill="x",
-            pady=(18, 0),
-        )
-
-        password.focus_set()
+        self.entry('New password', self.password_var, True).focus_set()
+        self.entry('Confirm new password', self.confirm_var, True)
+        self.next_button.configure(text='Save password', command=self.save_password)
+        self.next_button.pack(side='right', padx=18, pady=14)
 
     def save_password(self):
-        password = (
-            self.password_var.get()
-        )
-
-        confirmation = (
-            self.confirm_var.get()
-        )
-
-        if password != confirmation:
-            self.status_var.set(
-                "The passwords do not match."
-            )
-            return
-
-        try:
-            self.auth_service.reset_password(
-                self.user_id,
-                password,
-            )
-
-        except PasswordRecoveryError as exc:
-            self.status_var.set(
-                str(exc)
-            )
-            return
-
-        self.clear_content()
-
-        frame = self.page()
-
-        ctk.CTkLabel(
-            frame,
-            text="Password updated",
-            font=(
-                theme.FONT_FAMILY,
-                24,
-                "bold",
-            ),
-            text_color=theme.SUCCESS,
-        ).pack(
-            pady=(70, 10),
-        )
-
-        ctk.CTkLabel(
-            frame,
-            text=(
-                "Your password has been changed "
-                "successfully. You can now sign in."
-            ),
-            font=(
-                theme.FONT_FAMILY,
-                11,
-            ),
-            text_color=theme.TEXT,
-            wraplength=350,
-        ).pack()
-
-        ctk.CTkButton(
-            frame,
-            text="Return to sign in",
-            height=48,
-            corner_radius=12,
-            command=self.destroy,
-        ).pack(
-            fill="x",
-            pady=(30, 0),
-        )
-
-    def _status(
-        self,
-        parent,
-    ):
-        ctk.CTkLabel(
-            parent,
-            textvariable=self.status_var,
-            font=(
-                theme.FONT_FAMILY,
-                9,
-            ),
-            text_color=theme.DANGER,
-            justify="left",
-            wraplength=390,
-        ).pack(
-            anchor="w",
-            pady=(15, 0),
-        )
+        password = self.password_var.get()
+        if password != self.confirm_var.get():
+            self.error_var.set('The passwords do not match.'); return
+        def saved(_result):
+            self.clear_content()
+            label(self.content, 'Password updated', 22, True).pack(pady=(32,12))
+            label(self.content, 'You can now sign in with your new password.', muted=True).pack()
+            self.next_button.configure(text='Return to sign in', command=self.destroy)
+        self.request(lambda: self.auth_service.reset_password(self.user_id, password), saved)

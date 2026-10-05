@@ -17,7 +17,10 @@ from src.models.attendance_session import (
     AttendanceSession,
     AttendanceSessionState,
     AttendanceSessionType,
+    AttendanceScopeType,
+    AttendanceRosterType,
 )
+from src.models.attendance_support import AttendanceAuditLog, AttendanceRosterMember, UserMinistryScope, AuthorizationAuditLog
 
 from src.models.attendance_record import (
     AttendanceRecord,
@@ -41,4 +44,10 @@ __all__ = [
     "AttendanceSessionType",
     "AttendanceRecord",
     "AttendanceStatus",
+    "AttendanceScopeType",
+    "AttendanceRosterType",
+    "AttendanceAuditLog",
+    "AttendanceRosterMember",
+    "UserMinistryScope",
+    "AuthorizationAuditLog",
 ]

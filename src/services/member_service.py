@@ -1,7 +1,9 @@
 from datetime import date, datetime
+from contextlib import contextmanager
 from pathlib import Path
 import shutil
 import uuid
+import logging
 
 from sqlalchemy import (
     delete,
@@ -11,6 +13,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.orm import selectinload
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.config.database import SessionLocal
 from src.models.member import (
@@ -21,6 +24,7 @@ from src.models.member import (
 )
 from src.models.member_ministry import MemberMinistry
 from src.models.ministry import Ministry
+from src.security.attendance_permissions import load_access, AttendancePermissionError
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -37,6 +41,37 @@ class MemberServiceError(Exception):
 
 class MemberService:
     MEMBER_NUMBER_LOCK = 847201
+
+    def __init__(self, user_id=None, session_factory=SessionLocal):
+        self.user_id, self.session_factory = user_id, session_factory
+
+    @contextmanager
+    def _db(self):
+        with self.session_factory() as db:
+            try:
+                yield db, load_access(db, self.user_id)
+            except AttendancePermissionError as exc:
+                raise MemberServiceError(str(exc)) from exc
+            except SQLAlchemyError as exc:
+                db.rollback()
+                logging.getLogger(__name__).error("Member database operation failed: %s", type(exc).__name__)
+                raise MemberServiceError("The member operation could not be completed. Refresh and retry.") from exc
+
+    @staticmethod
+    def _require(access, permission):
+        if not access.has(permission):
+            raise MemberServiceError("You do not have permission for this member operation.")
+
+    @staticmethod
+    def _visible(access, stmt):
+        if access.has("MEMBERS_VIEW_ALL"):
+            return stmt
+        if not access.has("MEMBERS_VIEW_OWN_MINISTRY") or not access.scopes["view"]:
+            raise MemberServiceError("Member directory access is not assigned.")
+        membership = select(MemberMinistry.id).join(Ministry).where(
+            MemberMinistry.member_id == Member.id, MemberMinistry.is_active.is_(True),
+            Ministry.is_active.is_(True), MemberMinistry.ministry_id.in_(access.scopes["view"])).exists()
+        return stmt.where(membership)
 
     # ------------------------------------------------------
     # DATE HELPERS
@@ -325,10 +360,10 @@ class MemberService:
             [],
         )
 
-        for membership in memberships:
+        for membership in sorted(memberships, key=lambda row: (not row.is_primary, str(row.ministry_id))):
             if (
                 membership.is_active
-                and membership.ministry
+                and membership.ministry and membership.ministry.is_active
             ):
                 ministry_names.append(
                     membership.ministry.name
@@ -413,8 +448,10 @@ class MemberService:
         self,
         search="",
         status="ALL",
+        limit=50,
+        offset=0,
     ):
-        with SessionLocal() as db:
+        with self._db() as (db, access):
             stmt = (
                 select(Member)
                 .options(
@@ -426,6 +463,7 @@ class MemberService:
                 )
             )
 
+            stmt = self._visible(access, stmt)
             search = search.strip()
 
             if search:
@@ -476,7 +514,7 @@ class MemberService:
             )
 
             members = db.scalars(
-                stmt
+                stmt.limit(min(max(limit, 1), 200)).offset(max(offset, 0))
             ).unique().all()
 
             return [
@@ -494,9 +532,9 @@ class MemberService:
         self,
         member_id,
     ):
-        with SessionLocal() as db:
+        with self._db() as (db, access):
             member = db.scalar(
-                select(Member)
+                self._visible(access, select(Member))
                 .options(
                     selectinload(
                         Member.ministry_memberships
@@ -526,43 +564,43 @@ class MemberService:
     # ------------------------------------------------------
 
     def stats(self):
-        with SessionLocal() as db:
+        with self._db() as (db, access):
             total = db.scalar(
-                select(
+                self._visible(access, select(
                     func.count(
                         Member.id
                     )
-                )
+                ))
             ) or 0
 
             active = db.scalar(
-                select(
+                self._visible(access, select(
                     func.count(
                         Member.id
                     )
-                ).where(
+                )).where(
                     Member.status
                     == MemberStatus.ACTIVE
                 )
             ) or 0
 
             inactive = db.scalar(
-                select(
+                self._visible(access, select(
                     func.count(
                         Member.id
                     )
-                ).where(
+                )).where(
                     Member.status
                     == MemberStatus.INACTIVE
                 )
             ) or 0
 
             baptized = db.scalar(
-                select(
+                self._visible(access, select(
                     func.count(
                         Member.id
                     )
-                ).where(
+                )).where(
                     Member.baptized.is_(
                         True
                     )
@@ -581,14 +619,14 @@ class MemberService:
     # ------------------------------------------------------
 
     def list_ministries(self):
-        with SessionLocal() as db:
+        with self._db() as (db, access):
+            stmt = select(Ministry).where(Ministry.is_active.is_(True))
+            if not (access.has("MINISTRIES_VIEW_ALL") or access.has("MEMBERS_VIEW_ALL")):
+                if not (access.has("MINISTRIES_VIEW_OWN") or access.has("MEMBERS_VIEW_OWN_MINISTRY")):
+                    raise MemberServiceError("Ministry access is not assigned.")
+                stmt = stmt.where(Ministry.id.in_(access.scopes["view"]))
             ministries = db.scalars(
-                select(Ministry)
-                .where(
-                    Ministry.is_active.is_(
-                        True
-                    )
-                )
+                stmt
                 .order_by(
                     Ministry.name.asc()
                 )
@@ -620,7 +658,13 @@ class MemberService:
             or []
         )
 
-        with SessionLocal() as db:
+        with self._db() as (db, access):
+            self._require(access, "MEMBERS_CREATE")
+            self._require(access, "MEMBERS_VIEW_ALL")
+            ministry_ids = list(dict.fromkeys(uuid.UUID(str(mid)) for mid in ministry_ids))
+            active = set(db.scalars(select(Ministry.id).where(Ministry.id.in_(ministry_ids), Ministry.is_active.is_(True))).all())
+            if set(ministry_ids) != active:
+                raise MemberServiceError("Select active ministries.")
             member = Member(
                 member_no=self._next_member_number(
                     db
@@ -681,11 +725,9 @@ class MemberService:
             str(member_id)
         )
 
-        with SessionLocal() as db:
-            member = db.get(
-                Member,
-                member_uuid,
-            )
+        with self._db() as (db, access):
+            self._require(access, "MEMBERS_EDIT")
+            member = db.scalar(self._visible(access, select(Member)).where(Member.id == member_uuid))
 
             if member is None:
                 raise MemberServiceError(
@@ -697,33 +739,24 @@ class MemberService:
                 data,
             )
 
-            db.execute(
-                delete(
-                    MemberMinistry
-                ).where(
-                    MemberMinistry.member_id
-                    == member_uuid
-                )
-            )
-
-            for index, ministry_id in enumerate(
-                ministry_ids
-            ):
-                db.add(
-                    MemberMinistry(
-                        member_id=member.id,
-                        ministry_id=uuid.UUID(
-                            str(ministry_id)
-                        ),
-                        is_primary=(
-                            index == 0
-                        ),
-                        is_active=True,
-                        joined_at=(
-                            member.date_joined
-                        ),
-                    )
-                )
+            # Retain membership identity, assigned position and participation history.
+            selected = list(dict.fromkeys(uuid.UUID(str(mid)) for mid in ministry_ids))
+            active_ministries = set(db.scalars(select(Ministry.id).where(
+                Ministry.id.in_(selected), Ministry.is_active.is_(True))).all())
+            if set(selected) != active_ministries:
+                raise MemberServiceError("Select active ministries.")
+            existing = {row.ministry_id: row for row in db.scalars(select(MemberMinistry).where(
+                MemberMinistry.member_id == member_uuid)).all()}
+            for mid, row in existing.items():
+                if mid not in selected and row.is_active:
+                    row.is_active, row.is_primary, row.left_at = False, False, date.today()
+            for index, mid in enumerate(selected):
+                if mid in existing:
+                    row = existing[mid]
+                    row.is_active, row.is_primary, row.left_at = True, index == 0, None
+                else:
+                    db.add(MemberMinistry(member_id=member.id, ministry_id=mid,
+                        is_primary=index == 0, is_active=True, joined_at=member.date_joined))
 
             db.commit()
 
@@ -774,11 +807,9 @@ class MemberService:
             exist_ok=True,
         )
 
-        with SessionLocal() as db:
-            member = db.get(
-                Member,
-                member_uuid,
-            )
+        with self._db() as (db, access):
+            self._require(access, "MEMBERS_EDIT")
+            member = db.scalar(self._visible(access, select(Member)).where(Member.id == member_uuid))
 
             if member is None:
                 raise MemberServiceError(

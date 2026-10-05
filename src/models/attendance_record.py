@@ -90,6 +90,14 @@ class AttendanceRecord(Base):
         nullable=False,
     )
 
+    updated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(),
+        onupdate=func.now(), nullable=False,
+    )
+
     session = relationship(
         "AttendanceSession",
         back_populates="records",

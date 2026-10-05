@@ -82,4 +82,26 @@ SIDEBAR_TEXT = "#FFFFFF"
 SIDEBAR_MUTED = "#C6D6E2"
 
 FONT_FAMILY = "Segoe UI Variable"
-SIDEBAR_WIDTH = 270
+SIDEBAR_WIDTH = 220
+SPACING = (4, 8, 12, 16, 20, 24, 32)
+
+
+def configure_typography(root):
+    """Resolve the preferred Windows family once; retain a readable fallback."""
+    from tkinter.font import families
+    global FONT_FAMILY
+    installed = set(families(root))
+    FONT_FAMILY = next((name for name in ("Segoe UI Variable", "Segoe UI", "Arial")
+                        if name in installed), "TkDefaultFont")
+
+
+def desktop_work_area(root):
+    """Available desktop pixels, excluding the Windows taskbar."""
+    import os
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+        area = wintypes.RECT()
+        if ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(area), 0):
+            return area.left, area.top, area.right-area.left, area.bottom-area.top
+    return 0, 0, root.winfo_screenwidth(), root.winfo_screenheight()
