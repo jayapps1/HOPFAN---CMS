@@ -23,6 +23,7 @@ from src.ui.dashboard.dashboard_view import DashboardView
 from src.ui.members.member_form_dialog import MemberFormDialog
 from src.ui.login.forgot_password_dialog import ForgotPasswordDialog
 from src.services.member_service import MemberServiceError
+from tests.ministry_preview import PreviewMinistryService
 from src.security.attendance_permissions import PERMISSIONS
 from src.security.application_permissions import PERMISSIONS as APP_PERMISSIONS, LEADER_PERMISSIONS as APP_LEADER_PERMISSIONS
 from src.security.attendance_permissions import LEADER_PERMISSIONS
@@ -376,7 +377,8 @@ class UiSmokeTests(unittest.TestCase):
                     members.list_ministries.return_value = [dict(id=service.ministry_id,code='YOUTH',name='Youth Ministry')]
                     user = SimpleNamespace(id='preview',username='Administrator' if central else 'Youth Leader',email='preview@example.invalid',roles=[])
                     with patch('src.ui.dashboard.dashboard_view.MemberService',return_value=members), \
-                         patch('src.ui.dashboard.dashboard_view.AttendanceService',return_value=service):
+                         patch('src.ui.dashboard.dashboard_view.AttendanceService',return_value=service), \
+                         patch('src.ui.dashboard.dashboard_view.MinistryService',return_value=PreviewMinistryService(central)):
                         dashboard = DashboardView(self.root,user,on_logout=lambda:None,on_toggle_theme=lambda:None)
                         self.wait_for(lambda:dashboard.attendance_metric.value.cget('text')=='10')
                         self.pump()

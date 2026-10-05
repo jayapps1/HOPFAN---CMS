@@ -65,7 +65,7 @@ class SelectPopup(ctk.CTkToplevel):
         scale = self._get_window_scaling()
         left, top, work_width, work_height = theme.desktop_work_area(self.owner)
         margin = 8
-        width = min(self.owner.winfo_width(), work_width-2*margin)
+        width = min(max(self.owner.winfo_width(),getattr(self.owner,'popup_width',0)*scale), work_width-2*margin)
         desired_height = min(330, 36*max(1, min(len(self.keys), 8))+42+(44 if self.searchable else 0))*scale
         below = top+work_height-(self.owner.winfo_rooty()+self.owner.winfo_height())-margin
         above = self.owner.winfo_rooty()-top-margin

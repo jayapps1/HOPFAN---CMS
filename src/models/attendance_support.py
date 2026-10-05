@@ -15,7 +15,7 @@ class UserMinistryScope(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    ministry_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("ministries.id", ondelete="CASCADE"), index=True)
+    ministry_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("ministries.id", ondelete="RESTRICT"), index=True)
     can_view_attendance: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     can_create_attendance: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     can_record_attendance: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

@@ -87,9 +87,7 @@ def seed():
                 db.add(ministry)
                 created += 1
 
-            else:
-                ministry.name = name
-                ministry.is_active = True
+            # Existing administrator changes and lifecycle states are authoritative.
 
         db.commit()
 

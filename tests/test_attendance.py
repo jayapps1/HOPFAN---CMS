@@ -66,7 +66,7 @@ class AttendanceTests(unittest.TestCase):
         self.factory = sessionmaker(bind=self.connection, join_transaction_mode="create_savepoint", expire_on_commit=False)
         self.db = self.factory()
         suffix = uuid.uuid4().hex[:10]
-        self.ministries = {name: Ministry(code=name+suffix, name=name+" "+suffix, is_active=True)
+        self.ministries = {name: Ministry(code=(name+suffix).upper(), name=name+" "+suffix, is_active=True)
                            for name in ("Youth", "Choir", "Women", "Men")}
         self.db.add_all(self.ministries.values())
         roles = {role.code: role for role in self.db.scalars(select(Role)).all()}

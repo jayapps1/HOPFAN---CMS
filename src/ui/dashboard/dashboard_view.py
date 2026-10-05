@@ -2,16 +2,17 @@
 import customtkinter as ctk
 from src.services.member_service import MemberService
 from src.services.attendance_service import AttendanceService
+from src.services.ministry_service import MinistryService
 from src.security.application_permissions import navigation
 from src.ui import theme
 from src.ui.components.app_shell import AppShell
-from src.ui.components.async_loader import AsyncLoader
 from src.ui.components.future_workspace import FutureWorkspace
 from src.ui.components.modern import ActionButton, AppCard, label
 from src.ui.dashboard.home_view import HomeView
 from src.ui.members.members_view import MembersView
 from src.ui.attendance.attendance_view import AttendanceView
 from src.ui.attendance.dialogs import MinistryAccessDialog
+from src.ui.ministries.ministries_view import MinistriesView
 
 
 class DashboardView(ctk.CTkFrame):
@@ -20,6 +21,7 @@ class DashboardView(ctk.CTkFrame):
         self.user = user
         self.member_service = MemberService(user.id)
         self.attendance_service = AttendanceService(user.id)
+        self.ministry_service = MinistryService(user.id)
         self.attendance_capabilities = self.attendance_service.capabilities()
         self.permissions = set(self.attendance_capabilities['permissions'])
         destinations = navigation(self.attendance_capabilities)
@@ -68,20 +70,8 @@ class DashboardView(ctk.CTkFrame):
         self.body_frame.open_session(session_id)
 
     def show_ministries(self):
-        self.page('Ministries', self.context)
-        view = ctk.CTkScrollableFrame(self.shell.content, fg_color='transparent')
-        self.mount(view)
-        loader = AsyncLoader(view)
-        def ready(rows):
-            for ministry in rows:
-                card = AppCard(view)
-                card.pack(fill='x', padx=20, pady=6)
-                label(card, ministry['name'], 18, True).pack(anchor='w', padx=16, pady=(14, 4))
-                label(card, ministry['code'], 12, muted=True).pack(anchor='w', padx=16, pady=(0, 14))
-            if not rows:
-                label(view, 'No ministries are assigned to your account.', muted=True).pack(pady=32)
-        loader.submit('ministries', self.member_service.list_ministries, ready,
-                      lambda error: label(view, str(error), muted=True).pack(pady=20))
+        self.page('Ministries','Manage HOPFAN ministries, fellowships and departments' if 'MINISTRIES_VIEW_ALL' in self.permissions else 'Your assigned ministry workspaces')
+        self.mount(MinistriesView(self.shell.content,self.user,service=self.ministry_service,action_master=self.page_actions))
 
     def show_future(self, name):
         self.page(name, self.context)

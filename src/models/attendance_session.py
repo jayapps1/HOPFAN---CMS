@@ -117,7 +117,7 @@ class AttendanceSession(Base):
         UUID(as_uuid=True),
         ForeignKey(
             "ministries.id",
-            ondelete="SET NULL",
+            ondelete="RESTRICT",
         ),
         nullable=True,
         index=True,

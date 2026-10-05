@@ -144,7 +144,9 @@ class AttendanceService:
 
     def list_ministries(self, action="view"):
         with self._db() as (db, access):
-            stmt = select(Ministry).where(Ministry.is_active.is_(True))
+            stmt = select(Ministry)
+            if action == 'create':
+                stmt = stmt.where(Ministry.is_active.is_(True))
             central = access.has("ATTENDANCE_CREATE_GLOBAL") if action == "create" else access.has("ATTENDANCE_VIEW_ALL")
             if not central:
                 stmt = stmt.where(Ministry.id.in_(access.ministries(action)))
@@ -247,7 +249,7 @@ class AttendanceService:
 
     def _check_create(self, db, access, ministry_id):
         if ministry_id:
-            ministry = db.get(Ministry, ministry_id)
+            ministry = db.scalar(select(Ministry).where(Ministry.id==ministry_id).with_for_update(read=True))
             if ministry is None or not ministry.is_active:
                 raise AttendanceServiceError("Select an active ministry.")
         if not access.has("ATTENDANCE_CREATE_GLOBAL"):

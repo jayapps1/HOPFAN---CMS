@@ -103,6 +103,10 @@ class StatusBadge(ctk.CTkLabel):
               "ABSENT": (("#FAE9EA", "#402329"), ("#94363D", "#EFA7AE")),
               "OPEN": (("#E5F4ED", "#17392E"), ("#176442", "#8CD5B1"))}
 
+    COLORS.update({'ACTIVE':COLORS['OPEN'],
+        'INACTIVE':(("#EDF2F6","#1B2936"),("#526578","#B2C1CE")),
+        'ARCHIVED':(("#FFF2D9","#3A301B"),("#825300","#F1CC82"))})
+
     def __init__(self, master, status):
         bg, fg = self.COLORS.get(status, (theme.SURFACE_ALT, theme.TEXT_MUTED))
         super().__init__(master, text=(status or "UNMARKED").replace("_", " ").title(),

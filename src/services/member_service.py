@@ -363,7 +363,7 @@ class MemberService:
         for membership in sorted(memberships, key=lambda row: (not row.is_primary, str(row.ministry_id))):
             if (
                 membership.is_active
-                and membership.ministry and membership.ministry.is_active
+                and membership.ministry
             ):
                 ministry_names.append(
                     membership.ministry.name
@@ -618,9 +618,17 @@ class MemberService:
     # MINISTRIES
     # ------------------------------------------------------
 
-    def list_ministries(self):
+    def list_ministries(self, member_id=None):
         with self._db() as (db, access):
-            stmt = select(Ministry).where(Ministry.is_active.is_(True))
+            eligible = Ministry.is_active.is_(True)
+            if member_id:
+                member_uuid = uuid.UUID(str(member_id))
+                if not db.scalar(self._visible(access, select(Member.id)).where(Member.id==member_uuid)):
+                    raise MemberServiceError('Member not found or outside your scope.')
+                existing = select(MemberMinistry.ministry_id).where(MemberMinistry.member_id==member_uuid,
+                    MemberMinistry.is_active.is_(True))
+                eligible = or_(eligible,Ministry.id.in_(existing))
+            stmt = select(Ministry).where(eligible)
             if not (access.has("MINISTRIES_VIEW_ALL") or access.has("MEMBERS_VIEW_ALL")):
                 if not (access.has("MINISTRIES_VIEW_OWN") or access.has("MEMBERS_VIEW_OWN_MINISTRY")):
                     raise MemberServiceError("Ministry access is not assigned.")
@@ -639,6 +647,7 @@ class MemberService:
                     ),
                     "code": ministry.code,
                     "name": ministry.name,
+                    "status": ministry.status,
                 }
                 for ministry
                 in ministries
@@ -662,7 +671,8 @@ class MemberService:
             self._require(access, "MEMBERS_CREATE")
             self._require(access, "MEMBERS_VIEW_ALL")
             ministry_ids = list(dict.fromkeys(uuid.UUID(str(mid)) for mid in ministry_ids))
-            active = set(db.scalars(select(Ministry.id).where(Ministry.id.in_(ministry_ids), Ministry.is_active.is_(True))).all())
+            active = set(db.scalars(select(Ministry.id).where(Ministry.id.in_(ministry_ids), Ministry.is_active.is_(True))
+                .order_by(Ministry.id).with_for_update(read=True)).all())
             if set(ministry_ids) != active:
                 raise MemberServiceError("Select active ministries.")
             member = Member(
@@ -741,12 +751,13 @@ class MemberService:
 
             # Retain membership identity, assigned position and participation history.
             selected = list(dict.fromkeys(uuid.UUID(str(mid)) for mid in ministry_ids))
-            active_ministries = set(db.scalars(select(Ministry.id).where(
-                Ministry.id.in_(selected), Ministry.is_active.is_(True))).all())
-            if set(selected) != active_ministries:
-                raise MemberServiceError("Select active ministries.")
             existing = {row.ministry_id: row for row in db.scalars(select(MemberMinistry).where(
                 MemberMinistry.member_id == member_uuid)).all()}
+            active_ministries = set(db.scalars(select(Ministry.id).where(
+                Ministry.id.in_(selected), Ministry.is_active.is_(True)).order_by(Ministry.id).with_for_update(read=True)).all())
+            retained = {mid for mid,row in existing.items() if row.is_active}
+            if not set(selected).issubset(active_ministries | retained):
+                raise MemberServiceError("Select active ministries. Existing inactive/archived participation may be retained or explicitly removed.")
             for mid, row in existing.items():
                 if mid not in selected and row.is_active:
                     row.is_active, row.is_primary, row.left_at = False, False, date.today()

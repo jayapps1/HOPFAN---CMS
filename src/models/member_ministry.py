@@ -47,7 +47,7 @@ class MemberMinistry(Base):
         UUID(as_uuid=True),
         ForeignKey(
             "ministries.id",
-            ondelete="CASCADE",
+            ondelete="RESTRICT",
         ),
         nullable=False,
         index=True,

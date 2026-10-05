@@ -68,7 +68,8 @@ class MemberFormDialog(FixedFooterDialog):
         self.ministry_notice.bind('<Configure>', lambda event:self.ministry_notice.configure(wraplength=max(160,event.width-8)))
         self.save_button = ActionButton(self.footer,'Save member',self.save,'primary',width=140)
         self.save_button.pack(side='right',padx=18,pady=14)
-        self.loader.submit('ministries',service.list_ministries,self.show_ministries,lambda error:self.error_var.set(str(error)))
+        self.loader.submit('ministries',lambda:service.list_ministries(member_id=member['id']) if member else service.list_ministries(),
+            self.show_ministries,lambda error:self.error_var.set(str(error)))
         self.bind('<Control-s>',lambda _event:self.save())
 
     def section(self, title, row):
@@ -123,7 +124,9 @@ class MemberFormDialog(FixedFooterDialog):
             raise MemberServiceError(str(exc)) from exc
 
     def show_ministries(self,ministries):
-        self.ministry_select.set_options(ministries)
+        options = [dict(item,name=item['name']+(' · '+item['status'].title()
+            if item.get('status','ACTIVE')!='ACTIVE' else '')) for item in ministries]
+        self.ministry_select.set_options(options)
         self.ministry_select.configure(state='readonly' if ministries or self.selected_ministries else 'disabled')
         self.ministries_changed(self.ministry_select.get_selected_ids())
 
