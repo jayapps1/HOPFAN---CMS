@@ -2,6 +2,8 @@
 
 Updated 5 October 2026. This report supersedes the earlier attendance-only report and follows the latest pasted attendance and full UI requirements.
 
+The subsequent member form, dropdown and login refinements are documented in [UI refinement report](ui_refinement_report.md), including the current 36-check verification and screenshots.
+
 ## Delivered behavior
 
 - A Sunday service is a global session with a saved whole-church roster. Administrator **All Members** and ministry filters read the same session and attendance records. Filtering never creates another session or roster.

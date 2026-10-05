@@ -29,25 +29,55 @@ def parse_date(value):
 
 
 class DatePicker(ctk.CTkFrame):
-    def __init__(self, master, initial_date=None, variable=None, compact=False):
+    def __init__(self, master, initial_date=None, variable=None, compact=False, state='normal', height=38):
         super().__init__(master, fg_color="transparent")
         self.variable = variable if variable is not None else ctk.StringVar(master=self, value=display_date(initial_date))
+        self.enabled, self.calendar_popup = True, None
         self.grid_columnconfigure(0, weight=1)
-        self.entry = ModernEntry(self, textvariable=self.variable, placeholder_text="DD/MM/YYYY", width=110 if compact else 140)
+        self.entry = ModernEntry(self, textvariable=self.variable, placeholder_text="DD/MM/YYYY", width=110 if compact else 140,
+                                 height=height, corner_radius=11)
         self.entry.grid(row=0, column=0, sticky="ew")
         from src.ui.icons import icon
-        ActionButton(self, "" if compact else "Calendar", self.open_calendar, width=32 if compact else 88,
-                     image=icon("calendar", 18) if compact else None).grid(row=0, column=1, padx=(6, 0))
+        self.calendar_button = ActionButton(self, "" if compact else "Calendar", self.open_calendar, width=32 if compact else 88,
+                     height=height, corner_radius=11, image=icon("calendar", 18) if compact else None)
+        self.calendar_button.grid(row=0, column=1, padx=(6, 0))
+        self.set_enabled(state != 'disabled')
+
+    def set_enabled(self, enabled):
+        self.enabled = bool(enabled)
+        self.entry.configure(state='normal' if enabled else 'disabled',
+            fg_color=theme.INPUT if enabled else theme.DISABLED_INPUT,
+            text_color=theme.TEXT if enabled else theme.TEXT_MUTED)
+        self.calendar_button.configure(state='normal' if enabled else 'disabled',
+            fg_color=theme.SURFACE_ALT if enabled else theme.DISABLED_INPUT,
+            text_color=theme.TEXT if enabled else theme.TEXT_MUTED)
+        if not enabled and self.calendar_popup and self.calendar_popup.winfo_exists():
+            self.calendar_popup.destroy()
+            self.calendar_popup = None
 
     def get_date(self):
         return parse_date(self.variable.get())
 
     def open_calendar(self):
+        if not self.enabled:
+            return None
+        if self.calendar_popup and self.calendar_popup.winfo_exists():
+            self.calendar_popup.lift()
+            return self.calendar_popup
         try:
             initial = self.get_date()
         except ValueError:
             initial = date.today()
-        DatePickerDialog(self, initial, lambda selected: self.variable.set(display_date(selected)))
+        def selected(value):
+            if self.enabled:
+                self.variable.set(display_date(value))
+        self.calendar_popup = DatePickerDialog(self, initial, selected)
+        return self.calendar_popup
+
+    def destroy(self):
+        if self.calendar_popup and self.calendar_popup.winfo_exists():
+            self.calendar_popup.destroy()
+        super().destroy()
 
 
 class DatePickerDialog(ctk.CTkToplevel):
@@ -57,7 +87,7 @@ class DatePickerDialog(ctk.CTkToplevel):
         self.transient(master.winfo_toplevel())
         self.configure(fg_color=theme.SURFACE)
         self.resizable(False, False)
-        self.geometry("430x405")
+        self.geometry("430x450")
         self.year = (initial_date or date.today()).year
         self.month = (initial_date or date.today()).month
         self.on_select = on_select
@@ -68,10 +98,8 @@ class DatePickerDialog(ctk.CTkToplevel):
         self.month_box = ModernComboBox(toolbar, self.months, command=self.month_changed, width=180)
         self.month_box.pack(side="left")
         self.month_box.set(self.months[self.month-1])
-        self.year_box = ModernComboBox(toolbar, [str(y) for y in range(1900, date.today().year+31)],
-                                      command=self.year_changed, width=115)
-        self.year_box.configure(state="normal")
-        self.year_box.set(str(self.year))
+        self.year_box = ModernEntry(toolbar, width=115, height=46, corner_radius=11)
+        self.set_year_text(self.year)
         self.year_box.pack(side="right")
         self.year_box.bind("<Return>", lambda _e: self.year_changed(self.year_box.get()))
         self.year_box.bind("<FocusOut>", lambda _e: self.year_changed(self.year_box.get()))
@@ -84,7 +112,11 @@ class DatePickerDialog(ctk.CTkToplevel):
         ActionButton(footer, "Cancel", self.destroy, width=100).pack(side="right")
         self.protocol("WM_DELETE_WINDOW", self.destroy)
         self.bind("<Escape>", lambda _e: self.destroy())
-        self.after(60, self.grab_set)
+        self.activation_timer = self.after(60, self.activate)
+
+    def activate(self):
+        self.activation_timer = None
+        self.grab_set()
 
     def month_changed(self, value):
         self.month = self.months.index(value)+1
@@ -96,10 +128,15 @@ class DatePickerDialog(ctk.CTkToplevel):
             if not 1 <= year <= 9999:
                 raise ValueError
         except ValueError:
-            self.year_box.set(str(self.year))
+            self.set_year_text(self.year)
             return
         self.year = year
+        self.set_year_text(year)
         self.render_calendar()
+
+    def set_year_text(self, year):
+        self.year_box.delete(0, 'end')
+        self.year_box.insert(0, str(year))
 
     def render_calendar(self):
         for widget in self.days.winfo_children():
@@ -119,6 +156,8 @@ class DatePickerDialog(ctk.CTkToplevel):
         self.destroy()
 
     def destroy(self):
+        if self.activation_timer is not None:
+            self.after_cancel(self.activation_timer)
         super().destroy()
         if self.parent_dialog.winfo_exists() and isinstance(self.parent_dialog, ctk.CTkToplevel):
             self.parent_dialog.grab_set()

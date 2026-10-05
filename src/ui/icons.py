@@ -269,6 +269,12 @@ def _draw(name, color, size):
             width=w,
         )
 
+    elif name == "chevron_down":
+        d.line((p, c-2, c, c+2, size-p, c-2), fill=color, width=w)
+
+    elif name == "check":
+        d.line((p, c, c-1, size-p-2, size-p, p+2), fill=color, width=w)
+
     elif name == "calendar":
         stroke = max(1, size//16)
         margin = max(2, size//8)

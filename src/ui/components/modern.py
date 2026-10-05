@@ -6,6 +6,7 @@ import customtkinter as ctk
 from PIL import Image, ImageDraw, ImageOps, UnidentifiedImageError
 
 from src.ui import theme
+from src.ui.components.modern_select import ModernSelect
 
 logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -46,20 +47,15 @@ class AppCard(ctk.CTkFrame):
 
 class ModernEntry(ctk.CTkEntry):
     def __init__(self, master, **kwargs):
-        super().__init__(master, height=38, corner_radius=8, fg_color=theme.INPUT,
+        kwargs.setdefault('height', 38)
+        kwargs.setdefault('corner_radius', 8)
+        super().__init__(master, fg_color=theme.INPUT,
                          border_color=theme.BORDER, text_color=theme.TEXT,
                          placeholder_text_color=theme.TEXT_MUTED, font=font(), **kwargs)
 
 
-class ModernComboBox(ctk.CTkComboBox):
-    def __init__(self, master, values, **kwargs):
-        super().__init__(master, values=values, height=38, corner_radius=8,
-                         fg_color=theme.INPUT, border_color=theme.BORDER,
-                         button_color=theme.SURFACE_ALT, button_hover_color=theme.BORDER,
-                         text_color=theme.TEXT, dropdown_fg_color=theme.SURFACE,
-                         dropdown_text_color=theme.TEXT, dropdown_hover_color=theme.SURFACE_ALT,
-                         font=font(), dropdown_font=font(), state="readonly", **kwargs)
-        self.set(values[0] if values else "")
+# Keep existing page imports/API while ordinary selects share the new component.
+ModernComboBox = ModernSelect
 
 
 class ActionButton(ctk.CTkButton):
@@ -68,7 +64,9 @@ class ActionButton(ctk.CTkButton):
                     "secondary": (theme.SURFACE_ALT, theme.BORDER, theme.TEXT),
                     "danger": (theme.DANGER, "#AD3636", "#FFFFFF")}
         bg, hover, fg = palettes[variant]
-        super().__init__(master, text=text, command=command, height=36, corner_radius=8,
+        kwargs.setdefault('height', 36)
+        kwargs.setdefault('corner_radius', 8)
+        super().__init__(master, text=text, command=command,
                          fg_color=bg, hover_color=hover, text_color=fg, font=font(13, True), **kwargs)
 
 

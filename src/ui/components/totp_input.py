@@ -17,17 +17,18 @@ class TotpInput(ctk.CTkFrame):
         self.on_complete = on_complete
         self.entries = []
         self.last_completed_code = ""
+        self.complete_timer = None
 
         for index in range(6):
             entry = ctk.CTkEntry(
                 self,
-                width=58,
-                height=64,
-                corner_radius=14,
+                width=48,
+                height=54,
+                corner_radius=12,
                 justify="center",
                 font=ctk.CTkFont(
                     family=theme.FONT_FAMILY,
-                    size=25,
+                    size=23,
                     weight="bold",
                 ),
                 fg_color=theme.INPUT,
@@ -39,7 +40,7 @@ class TotpInput(ctk.CTkFrame):
             entry.grid(
                 row=0,
                 column=index,
-                padx=5,
+                padx=(0 if index == 0 else 4, 0 if index == 5 else 4),
             )
 
             entry.bind(
@@ -55,6 +56,8 @@ class TotpInput(ctk.CTkFrame):
                 "<Control-v>",
                 self._paste,
             )
+            entry.bind('<FocusIn>', lambda _event, field=entry:field.configure(border_color=theme.FOCUS_BORDER), add='+')
+            entry.bind('<FocusOut>', lambda _event, field=entry:field.configure(border_color=theme.BORDER), add='+')
 
             self.entries.append(entry)
 
@@ -153,6 +156,10 @@ class TotpInput(ctk.CTkFrame):
 
     def _check_complete(self):
         code = self.get_code()
+        if len(code) != 6 or not code.isdigit():
+            self.last_completed_code = ''
+            self.cancel_complete()
+            return
 
         if (
             len(code) == 6
@@ -162,16 +169,24 @@ class TotpInput(ctk.CTkFrame):
             self.last_completed_code = code
 
             if self.on_complete:
-                self.after(
-                    90,
-                    lambda:
-                    self.on_complete(code),
-                )
+                self.cancel_complete()
+                self.complete_timer = self.after(90, lambda:self.submit_complete(code))
+
+    def submit_complete(self, code):
+        self.complete_timer = None
+        if self.get_code() == code and self.on_complete:
+            self.on_complete(code)
+
+    def cancel_complete(self):
+        if self.complete_timer is not None:
+            self.after_cancel(self.complete_timer)
+            self.complete_timer = None
 
     def clear(
         self,
         focus=True,
     ):
+        self.cancel_complete()
         for entry in self.entries:
             entry.delete(
                 0,
@@ -185,3 +200,7 @@ class TotpInput(ctk.CTkFrame):
 
     def focus_first(self):
         self.entries[0].focus_set()
+
+    def destroy(self):
+        self.cancel_complete()
+        super().destroy()

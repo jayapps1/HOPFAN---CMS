@@ -1,14 +1,14 @@
 """Responsive sign-in using the shared HOPFAN visual system."""
-from pathlib import Path
 import customtkinter as ctk
-from PIL import Image
 from src.services.auth_service import AuthService, AuthenticationError
 from src.ui import theme
 from src.ui.components.async_loader import AsyncLoader
-from src.ui.components.modern import ActionButton, AppCard, ModernEntry, font, label
+from src.ui.components.modern import ActionButton, font, label
+from src.ui.components.icon_entry import IconEntry
 from src.ui.components.totp_input import TotpInput
 from src.ui.icons import icon
 from src.ui.login.forgot_password_dialog import ForgotPasswordDialog
+from src.ui.login.brand_panel import BrandPanel
 
 
 class LoginView(ctk.CTkFrame):
@@ -25,65 +25,52 @@ class LoginView(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=4, uniform='panels')
         self.grid_columnconfigure(1, weight=6, uniform='panels')
         self.grid_rowconfigure(0, weight=1)
-        brand = ctk.CTkFrame(self, fg_color=theme.SIDEBAR, corner_radius=0)
+        brand = BrandPanel(self)
         brand.grid(row=0, column=0, sticky='nsew')
-        brand.grid_columnconfigure(0, weight=1)
-        brand.grid_rowconfigure(1, weight=1)
-        identity = ctk.CTkFrame(brand, fg_color='transparent')
-        identity.grid(row=0, column=0, sticky='ew', padx=32, pady=24)
-        logo_path = Path(__file__).resolve().parents[3] / 'assets' / 'logo' / 'hopfan_logo_clean.png'
-        try:
-            with Image.open(logo_path) as source:
-                self.logo_image = ctk.CTkImage(light_image=source.copy(), dark_image=source.copy(), size=(64, 64))
-            ctk.CTkLabel(identity, text='', image=self.logo_image).pack(side='left', padx=(0, 16))
-        except OSError:
-            self.logo_image = None
-        ctk.CTkLabel(identity, text='HOPFAN', text_color='#FFFFFF', font=font(27, True), anchor='w').pack(side='left')
-        message = ctk.CTkFrame(brand, fg_color='transparent')
-        message.grid(row=1, column=0, sticky='ew', padx=32)
-        ctk.CTkLabel(message, text='A connected church.\nA cared-for community.', font=font(30, True),
-            text_color='#FFFFFF', anchor='w', justify='left', wraplength=330).pack(fill='x')
-        ctk.CTkLabel(message, text='Members, ministry and attendance\nin one trusted workspace.', font=font(14),
-            text_color=theme.SIDEBAR_MUTED, anchor='w', justify='left').pack(fill='x', pady=(16, 0))
-        ctk.CTkLabel(brand, text='HOUSE OF PRAYER FOR ALL NATIONS', font=font(10, True),
-            text_color=theme.SIDEBAR_MUTED, anchor='w').grid(row=2, column=0, sticky='ew', padx=32, pady=24)
-        self.login_panel = ctk.CTkFrame(self, fg_color=theme.BACKGROUND, corner_radius=0)
+        self.login_panel = ctk.CTkFrame(self, fg_color=theme.SURFACE, corner_radius=0)
         self.login_panel.grid(row=0, column=1, sticky='nsew')
+        self.login_panel.grid_columnconfigure(0, weight=1)
+        self.login_panel.grid_rowconfigure(1, weight=1)
+        toolbar = ctk.CTkFrame(self.login_panel, fg_color='transparent', height=52)
+        toolbar.grid(row=0, column=0, sticky='ew')
         self.theme_button = ActionButton(self.login_panel, 'Dark mode' if ctk.get_appearance_mode() == 'Light' else 'Light mode', self.change_theme, width=105)
         self.theme_button.place(relx=1, x=-24, y=16, anchor='ne')
-        self.card = AppCard(self.login_panel, width=470, height=510)
-        self.card.place(relx=.5, rely=.54, anchor='center')
+        stage = ctk.CTkFrame(self.login_panel, fg_color='transparent')
+        stage.grid(row=1, column=0, sticky='nsew', padx=24, pady=(4,28))
+        self.card = ctk.CTkFrame(stage, fg_color='transparent', width=420)
+        self.card.place(relx=.5, rely=.5, anchor='center')
         self.card.grid_columnconfigure(0, weight=1)
-        self.card.grid_rowconfigure(2, weight=1)
-        self.card.grid_propagate(False)
         header = ctk.CTkFrame(self.card, fg_color='transparent')
-        header.grid(row=0, column=0, sticky='ew', padx=24, pady=(20, 12))
-        label(header, 'Welcome back', 26, True).pack(anchor='w')
+        header.grid(row=0, column=0, sticky='ew', pady=(0,20))
+        label(header, 'Welcome back', 30, True).pack(anchor='w')
         label(header, 'Sign in to your HOPFAN workspace.', 12, muted=True).pack(anchor='w', pady=(4,0))
-        self.selector = ctk.CTkSegmentedButton(self.card, values=['Password', 'Authenticator'], font=font(13, True),
+        self.selector = ctk.CTkSegmentedButton(self.card, values=['Password', 'Authenticator'], font=font(12, True), height=38,
             command=lambda value: self.show_password_form() if value == 'Password' else self.show_totp_form(),
-            fg_color=theme.SURFACE_ALT, corner_radius=8,
+            fg_color=theme.SURFACE_ALT, corner_radius=10,
             selected_color=("#DDECF7", "#245477"), selected_hover_color=("#C8E0F2", "#2C638E"),
             unselected_color=theme.SURFACE_ALT, unselected_hover_color=theme.BORDER, text_color=theme.TEXT)
-        self.selector.grid(row=1, column=0, sticky='ew', padx=24, pady=(0, 10))
+        self.selector.grid(row=1, column=0, sticky='ew', pady=(0,20))
         self.selector.set('Password')
-        self.content = ctk.CTkScrollableFrame(self.card, fg_color='transparent', corner_radius=0)
-        self.content.grid(row=2, column=0, sticky='nsew', padx=18)
+        self.content = ctk.CTkFrame(self.card, fg_color='transparent', corner_radius=0)
+        self.content.grid(row=2, column=0, sticky='ew')
         self.footer = ctk.CTkFrame(self.card, fg_color='transparent')
-        self.footer.grid(row=3, column=0, sticky='ew', padx=24, pady=(8, 20))
+        self.footer.grid(row=3, column=0, sticky='ew', pady=(8,0))
         self.status_label = ctk.CTkLabel(self.footer, textvariable=self.status_var, font=font(12),
-                                       text_color=theme.DANGER, wraplength=390)
-        self.status_label.pack(fill='x', pady=(0, 4))
-        self.signin_button = ActionButton(self.footer, 'Sign in', self.login_with_password, 'primary')
+                                       text_color=theme.ERROR_TEXT, wraplength=390)
+        self.status_label.pack(fill='x', pady=(0,6))
+        self.signin_button = ActionButton(self.footer, 'Sign in', self.login_with_password, 'primary', height=48, corner_radius=12)
         self.signin_button.pack(fill='x')
-        self.login_panel.bind('<Configure>', self.resize_card)
+        label(self.card, 'Secure church administration', 11, muted=True, image=icon('shield',16), compound='left').grid(row=4,column=0,pady=(18,0))
+        stage.bind('<Configure>', self.resize_card)
         self.show_password_form()
         self.enter_binding = master.bind('<Return>', self.handle_enter, add='+')
 
     def resize_card(self, event):
         scale = self._get_widget_scaling()
-        width, height = event.width/scale, event.height/scale
-        self.card.configure(width=min(470, max(360, width-48)), height=min(510, max(340, height-88)))
+        width = min(420, max(280,event.width/scale))
+        # Tk's place_configure takes physical pixels; CTk inputs use logical ones.
+        self.card.place_configure(width=round(width*scale))
+        self.status_label.configure(wraplength=width)
 
     def change_theme(self):
         self.on_toggle_theme()
@@ -93,9 +80,10 @@ class LoginView(ctk.CTkFrame):
         for child in self.content.winfo_children():
             child.destroy()
         self.status_var.set('')
-        label(self.content, 'Email address', 12, True).pack(anchor='w', padx=6, pady=(8,4))
-        self.email_entry = ModernEntry(self.content, textvariable=self.email_var, placeholder_text='you@example.com')
-        self.email_entry.pack(fill='x', padx=6)
+        label(self.content, 'Email address', 11, True).pack(anchor='w', pady=(0,6))
+        self.email_field = IconEntry(self.content, self.email_var, 'mail', placeholder='name@example.com')
+        self.email_field.pack(fill='x')
+        self.email_entry = self.email_field.entry
 
     def show_password_form(self):
         if self.busy:
@@ -103,15 +91,16 @@ class LoginView(ctk.CTkFrame):
         self.login_method = 'password'
         self.selector.set('Password')
         self.clear_content()
-        label(self.content, 'Password', 12, True).pack(anchor='w', padx=6, pady=(16,4))
-        row = ctk.CTkFrame(self.content, fg_color='transparent')
-        row.pack(fill='x', padx=6)
-        self.password_entry = ModernEntry(row, textvariable=self.password_var, show='•')
-        self.password_entry.pack(side='left', fill='x', expand=True)
+        label(self.content, 'Password', 11, True).pack(anchor='w', pady=(18,6))
+        self.password_field = IconEntry(self.content, self.password_var, 'lock', placeholder='Enter your password',
+            show='•', action=self.toggle_password)
+        self.password_field.pack(fill='x')
+        self.password_entry = self.password_field.entry
         self.password_visible = False
-        self.password_button = ActionButton(row, '', self.toggle_password, width=36, image=icon('eye', 18))
-        self.password_button.pack(side='right', padx=(6,0))
-        ActionButton(self.content, 'Forgot password?', self.open_forgot_password, width=150).pack(anchor='e', padx=6, pady=12)
+        self.password_button = self.password_field.action_button
+        ctk.CTkButton(self.content, text='Forgot password?', command=self.open_forgot_password, width=126,
+            height=26, font=font(11,True), fg_color='transparent', hover_color=theme.SURFACE_ALT,
+            text_color=theme.LINK_TEXT).pack(anchor='e', pady=(8,0))
         self.signin_button.configure(text='Sign in', state='normal')
         self.signin_button.pack(fill='x')
 
@@ -121,11 +110,11 @@ class LoginView(ctk.CTkFrame):
         self.login_method = 'totp'
         self.selector.set('Authenticator')
         self.clear_content()
-        label(self.content, 'Authenticator code', 12, True).pack(anchor='w', padx=6, pady=(16,8))
+        label(self.content, 'Authenticator code', 11, True).pack(anchor='w', pady=(18,8))
         self.totp_input = TotpInput(self.content, on_complete=self.login_with_totp)
         self.totp_input.pack(anchor='center', pady=(0, 12))
         label(self.content, 'Enter the six-digit code from your authenticator app.\nVerification starts automatically.',
-              12, muted=True, wraplength=370, justify='left').pack(anchor='w', padx=6)
+              12, muted=True, wraplength=370, justify='left').pack(anchor='w')
         self.signin_button.pack_forget()
 
     def toggle_password(self):

@@ -411,5 +411,40 @@ class AttendanceTests(unittest.TestCase):
         session = self.youth(session_type='LEADERSHIP_MEETING')
         self.assertEqual(self.services['Youth'].roster(session['id'])['total'], 1)
 
+    def test_member_baptism_date_and_null_guard_in_postgresql(self):
+        service = MemberService(self.users['Admin'].id, self.factory)
+        profile = service.create_member(dict(first_name='Baptism',last_name='Test',
+            baptized=False,baptism_date='2026-10-05'))
+        member_id = uuid.UUID(profile['id'])
+        self.db.expire_all()
+        self.assertIsNone(self.db.get(Member,member_id).baptism_date)
+        profile.update(baptized=True,baptism_date='2026-10-05')
+        profile = service.update_member(member_id,profile,[])
+        self.db.expire_all()
+        self.assertEqual(self.db.get(Member,member_id).baptism_date,date(2026,10,5))
+        profile.update(baptized=False,baptism_date='invalid stale date')
+        service.update_member(member_id,profile,[])
+        self.db.expire_all()
+        saved = self.db.get(Member,member_id)
+        self.assertFalse(saved.baptized)
+        self.assertIsNone(saved.baptism_date)
+
+    def test_member_multiple_ministries_edit_without_duplicates(self):
+        service = MemberService(self.users['Admin'].id, self.factory)
+        ids = [self.ministries[name].id for name in ('Youth','Choir','Men')]
+        profile = service.create_member(dict(first_name='Multiple',last_name='Test'),ids+[ids[0]])
+        member_id = uuid.UUID(profile['id'])
+        self.assertEqual(set(profile['ministry_ids']),set(map(str,ids)))
+        original = {row.ministry_id:row.id for row in self.db.scalars(select(MemberMinistry).where(
+            MemberMinistry.member_id==member_id))}
+        changed = [ids[0],ids[2],self.ministries['Women'].id]
+        profile = service.update_member(member_id,profile,changed+[changed[0]])
+        self.assertEqual(set(profile['ministry_ids']),set(map(str,changed)))
+        self.db.expire_all()
+        rows = self.db.scalars(select(MemberMinistry).where(MemberMinistry.member_id==member_id)).all()
+        self.assertEqual(len(rows),4)
+        self.assertEqual(sum(row.is_active for row in rows),3)
+        self.assertTrue(all(row.id==original[row.ministry_id] for row in rows if row.ministry_id in original))
+
 if __name__ == "__main__":
     unittest.main()
