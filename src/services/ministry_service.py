@@ -21,7 +21,7 @@ class MinistryServiceError(Exception):
     pass
 
 
-class MinistryAuthorizationError(MinistryServiceError):
+class MinistryAuthorizationError(MinistryServiceError, AttendancePermissionError):
     pass
 
 
@@ -41,6 +41,8 @@ class MinistryService:
         with self.session_factory() as db:
             try:
                 yield db,load_access(db,self.user_id)
+            except MinistryAuthorizationError:
+                raise
             except AttendancePermissionError as exc:
                 db.rollback()
                 raise MinistryAuthorizationError(str(exc)) from exc
@@ -64,9 +66,7 @@ class MinistryService:
         if not access.has('MINISTRIES_VIEW_OWN'):
             raise MinistryAuthorizationError('Ministry access is not assigned.')
         # Retain assigned historical workspace access when a ministry is archived.
-        scope = select(UserMinistryScope.ministry_id).where(UserMinistryScope.user_id==access.user_id,
-            UserMinistryScope.is_active.is_(True),UserMinistryScope.can_view_attendance.is_(True))
-        return stmt.where(Ministry.id.in_(scope))
+        return stmt.where(Ministry.id.in_(access.ministry_ids('MINISTRIES_VIEW_OWN', include_inactive=True)))
 
     def capabilities(self):
         with self._db() as (db,access):

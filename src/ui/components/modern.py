@@ -106,6 +106,7 @@ class StatusBadge(ctk.CTkLabel):
     COLORS.update({'ACTIVE':COLORS['OPEN'],
         'INACTIVE':(("#EDF2F6","#1B2936"),("#526578","#B2C1CE")),
         'ARCHIVED':(("#FFF2D9","#3A301B"),("#825300","#F1CC82"))})
+    COLORS.update({'LOCKED':COLORS['ABSENT'], 'SUSPENDED':COLORS['ARCHIVED']})
     COLORS.update({'CURRENT':COLORS['ACTIVE'], 'HISTORICAL':COLORS['INACTIVE'], 'VACANT':COLORS['ARCHIVED']})
 
     def __init__(self, master, status):

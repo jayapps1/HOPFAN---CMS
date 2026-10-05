@@ -2,6 +2,7 @@
 from datetime import date, datetime, timezone
 import re
 from sqlalchemy import func, or_, select
+from sqlalchemy.orm import selectinload
 from src.models import (Member, MemberMinistry, MemberStatus, Ministry, MinistryPosition,
                         MinistryLeadershipAssignment as Assignment, MinistryLeadershipAuditLog as Audit, User)
 from src.services.ministry_service import MinistryService, MinistryServiceError, MinistryAuthorizationError, ministry_uuid
@@ -45,11 +46,7 @@ class MinistryLeadershipService(MinistryService):
         row = self._get(db, access, ministry_id)
         if permission == 'MINISTRY_LEADERSHIP_VIEW' and not access.has('MINISTRY_LEADERSHIP_VIEW_ALL'):
             # VIEW grants are scoped even if the account can read global ministry configuration.
-            from src.models import UserMinistryScope
-            assigned = db.scalar(select(UserMinistryScope.id).where(UserMinistryScope.user_id == access.user_id,
-                UserMinistryScope.ministry_id == row.id, UserMinistryScope.is_active.is_(True),
-                UserMinistryScope.can_view_attendance.is_(True)))
-            if not assigned:
+            if not access.can_access_ministry(row.id, 'MINISTRY_LEADERSHIP_VIEW', include_inactive=True):
                 raise LeadershipAuthorizationError('Leadership is outside your assigned ministries.')
         if active:
             row = db.scalar(select(Ministry).where(Ministry.id == row.id).with_for_update(read=True).execution_options(populate_existing=True))
@@ -61,10 +58,7 @@ class MinistryLeadershipService(MinistryService):
         with self._db() as (db, access):
             ministry = self._get(db, access, ministry_id)
             global_access = access.has('MINISTRIES_VIEW_ALL')
-            from src.models import UserMinistryScope
-            scoped = access.has('MINISTRY_LEADERSHIP_VIEW') and bool(db.scalar(select(UserMinistryScope.id).where(
-                UserMinistryScope.user_id == access.user_id, UserMinistryScope.ministry_id == ministry.id,
-                UserMinistryScope.is_active.is_(True), UserMinistryScope.can_view_attendance.is_(True))))
+            scoped = access.can_access_ministry(ministry.id, 'MINISTRY_LEADERSHIP_VIEW', include_inactive=True)
             result = dict(view=scoped or access.has('MINISTRY_LEADERSHIP_VIEW_ALL'),
                 positions_view=access.has('MINISTRY_POSITION_VIEW'),
                 **{name: global_access and access.has(permission) for name, permission in {
@@ -73,6 +67,7 @@ class MinistryLeadershipService(MinistryService):
                     'assign':'MINISTRY_LEADERSHIP_ASSIGN', 'edit':'MINISTRY_LEADERSHIP_EDIT', 'end':'MINISTRY_LEADERSHIP_END',
                     'add_membership':'MEMBERS_EDIT'}.items()},
                 member_search=access.has('MEMBERS_VIEW_ALL') or access.has('MEMBERS_VIEW_OWN_MINISTRY'))
+            result['grant_system_access'] = access.has('USER_CREATE')
             result['add_membership'] = result['add_membership'] and access.has('MEMBERS_VIEW_ALL')
             return result
 
@@ -268,7 +263,7 @@ class MinistryLeadershipService(MinistryService):
 
     @staticmethod
     def _assignment_dto(row, member, position, ministry):
-        return dict(id=str(row.id), ministry_id=str(row.ministry_id), ministry_name=ministry.name,
+        return dict(has_system_account=bool(member.user_accounts), id=str(row.id), ministry_id=str(row.ministry_id), ministry_name=ministry.name,
             member_id=str(row.member_id), full_name=member.full_name, member_no=member.member_no,
             phone=member.phone or '', photo_path=member.photo_path or '', position_id=str(row.position_id),
             position_name=position.name if row.is_current else row.position_name, position_code=row.position_code,
@@ -277,7 +272,7 @@ class MinistryLeadershipService(MinistryService):
 
     @staticmethod
     def _assignment_query():
-        return select(Assignment, Member, MinistryPosition, Ministry).join(Member, Member.id == Assignment.member_id)\
+        return select(Assignment, Member, MinistryPosition, Ministry).options(selectinload(Member.user_accounts)).join(Member, Member.id == Assignment.member_id)\
             .join(MinistryPosition, MinistryPosition.id == Assignment.position_id).join(Ministry, Ministry.id == Assignment.ministry_id)
 
     def _assignment(self, db, access, assignment_id, permission, write=False, lock=False):
@@ -465,10 +460,7 @@ class MinistryLeadershipService(MinistryService):
         cls._grant(access, 'MINISTRY_LEADERSHIP_VIEW')
         stmt = cls._assignment_query().where(Assignment.member_id == ministry_uuid(member_id))
         if not (access.has('MINISTRY_LEADERSHIP_VIEW_ALL') and access.has('MINISTRIES_VIEW_ALL')):
-            from src.models import UserMinistryScope
-            scope = select(UserMinistryScope.ministry_id).where(UserMinistryScope.user_id == access.user_id,
-                UserMinistryScope.is_active.is_(True), UserMinistryScope.can_view_attendance.is_(True))
-            stmt = stmt.where(Assignment.ministry_id.in_(scope))
+            stmt = stmt.where(Assignment.ministry_id.in_(access.ministry_ids('MINISTRY_LEADERSHIP_VIEW', include_inactive=True)))
         return [cls._assignment_dto(*row) for row in db.execute(stmt.order_by(Assignment.is_current.desc(), Ministry.name, Assignment.start_date.desc(), Assignment.id))]
 
     def get_member_leadership(self, member_id):

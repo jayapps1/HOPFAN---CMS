@@ -97,6 +97,9 @@ class User(Base):
         nullable=True,
     )
 
+    require_password_change: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false(), nullable=False)
+    auth_revision: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+
     # -------------------------------------------------
     # TOTP / MULTI-FACTOR AUTHENTICATION
     # -------------------------------------------------

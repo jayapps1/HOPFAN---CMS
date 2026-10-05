@@ -14,6 +14,7 @@ from src.models.member_ministry import MemberMinistry
 from src.models.ministry_leadership import MinistryPosition, MinistryLeadershipAssignment, MinistryLeadershipAuditLog
 
 from src.models.user import User, UserStatus
+from src.models.security_audit import SecurityAuditLog
 
 from src.models.attendance_session import (
     AttendanceSession,
@@ -35,6 +36,7 @@ __all__ = [
     "Role",
     "User",
     "UserStatus",
+    "SecurityAuditLog",
     "Member",
     "MemberStatus",
     "Gender",

@@ -25,7 +25,7 @@ class AttendanceServiceError(Exception):
     pass
 
 
-class AttendanceAuthorizationError(AttendanceServiceError):
+class AttendanceAuthorizationError(AttendanceServiceError, AttendancePermissionError):
     pass
 
 
@@ -50,6 +50,8 @@ class AttendanceService:
         with self.session_factory() as db:
             try:
                 yield db, load_access(db, self.user_id)
+            except AttendanceAuthorizationError:
+                raise
             except AttendancePermissionError as exc:
                 db.rollback()
                 raise AttendanceAuthorizationError(str(exc)) from exc
@@ -74,7 +76,7 @@ class AttendanceService:
         with self._db() as (_, access):
             return {"permissions": sorted(access.permissions),
                     "church_wide": access.has("ATTENDANCE_VIEW_ALL"),
-                    "scope_ids": sorted(str(mid) for mid in access.ministries("view")),
+                    "scope_ids": sorted(str(mid) for mid in access.scope_ids),
                     "can_view": access.has("ATTENDANCE_VIEW_ALL") or bool(access.ministries("view")),
                     "can_create": access.has("ATTENDANCE_CREATE_GLOBAL") or bool(access.ministries("create")),
                     "can_report": access.has("ATTENDANCE_EXPORT") and (
@@ -594,14 +596,17 @@ class AttendanceService:
                                                               UserMinistryScope.ministry_id == ministry.id))
             old = {f: getattr(scope, f) for f in fields} if scope else None
             if scope is None:
-                scope = UserMinistryScope(user_id=target.id, ministry_id=ministry.id)
+                scope = UserMinistryScope(user_id=target.id, ministry_id=ministry.id, created_by_user_id=access.user_id)
                 db.add(scope)
+            scope.legacy_attendance_limits = True
             for field in fields:
                 setattr(scope, field, grants.get(field, False))
             if assign_leader_role:
                 role = db.scalar(select(Role).where(Role.code == "MINISTRY_ATTENDANCE_LEADER"))
                 if role is None:
                     raise AttendanceServiceError("Attendance role has not been seeded. Run the migration.")
+                if any(p.is_active and not access.has(p.code) for p in role.permissions):
+                    self._deny()
                 if role not in target.roles:
                     target.roles.append(role)
                     db.add(AuthorizationAuditLog(changed_by_user_id=access.user_id, target_user_id=target.id,

@@ -36,8 +36,8 @@ class MultiSelectDropdown(ModernSelect):
 
     def update_summary(self):
         names = self.get_selected_names()
-        text = ', '.join(names) if len(names) <= 2 and len(', '.join(names)) < 48 else f'{len(self.selected_ids)} ministries selected'
-        self.variable.set(text if names else f'{len(self.selected_ids)} ministries selected' if self.selected_ids else '')
+        text = ', '.join(names) if len(names) <= 2 and len(', '.join(names)) < 48 else f'{len(self.selected_ids)} {self.search_label} selected'
+        self.variable.set(text if names else f'{len(self.selected_ids)} {self.search_label} selected' if self.selected_ids else '')
 
     def popup_options(self, search=''):
         return [(item['id'], item['name']) for item in self.options if search.casefold() in item['name'].casefold()]

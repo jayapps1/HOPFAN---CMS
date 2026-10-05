@@ -3,15 +3,17 @@ import customtkinter as ctk
 from src.services.member_service import MemberService
 from src.services.attendance_service import AttendanceService
 from src.services.ministry_service import MinistryService
+from src.services.user_service import UserService
+from src.ui.components.async_loader import AsyncLoader
 from src.security.application_permissions import navigation
 from src.ui import theme
 from src.ui.components.app_shell import AppShell
 from src.ui.components.future_workspace import FutureWorkspace
-from src.ui.components.modern import ActionButton, AppCard, label
+from src.ui.components.modern import ActionButton, AppCard, StatCard, label
 from src.ui.dashboard.home_view import HomeView
 from src.ui.members.members_view import MembersView
 from src.ui.attendance.attendance_view import AttendanceView
-from src.ui.attendance.dialogs import MinistryAccessDialog
+from src.ui.administration.administration_view import AdministrationView
 from src.ui.ministries.ministries_view import MinistriesView
 
 
@@ -29,9 +31,13 @@ class DashboardView(ctk.CTkFrame):
         self.ministries = self.attendance_service.list_ministries() if self.attendance_capabilities['can_view'] else []
         self.central = self.attendance_capabilities.get('church_wide', 'ATTENDANCE_VIEW_ALL' in self.permissions)
         self.context = 'Church-wide operations' if self.central else ', '.join(m['name'] for m in self.ministries) or 'Assigned workspace'
+        if 'Administration' in self.allowed_pages and not any(page in self.allowed_pages for page in ('Members','Attendance','Ministries')):
+            self.context='Account and access administration'
         self.pack(fill='both', expand=True)
         self.shell = AppShell(self, user, destinations, self.context, self.select_menu, on_logout, on_toggle_theme)
         self.shell.pack(fill='both', expand=True)
+        self.authenticator_button=ActionButton(self.shell.topbar, 'My authenticator', self.authenticator, width=140)
+        self.authenticator_button.grid(row=0, column=4, padx=(0,16))
         self.menu_buttons = self.shell.sidebar.buttons
         self.sidebar = self.shell.sidebar
         self.body_frame = None
@@ -49,7 +55,32 @@ class DashboardView(ctk.CTkFrame):
         view.pack(fill='both', expand=True)
 
     def show_dashboard(self):
-        self.page('Dashboard' if self.central else 'Ministry dashboard', self.context)
+        operational=any(page in self.allowed_pages for page in ('Members','Attendance','Ministries'))
+        self.page('Dashboard' if self.central or not operational else 'Ministry dashboard', self.context)
+        if not operational:
+            view=ctk.CTkFrame(self.shell.content,fg_color='transparent')
+            self.mount(view)
+            card=AppCard(view)
+            card.pack(fill='x',padx=24,pady=12)
+            label(card,'Your workspace',20,True).pack(anchor='w',padx=18,pady=(16,6))
+            label(card,'Open a workspace assigned to your account.',muted=True).pack(anchor='w',padx=18,pady=(0,12))
+            for destination in self.allowed_pages:
+                if destination!='Dashboard':
+                    ActionButton(card,destination,lambda name=destination:self.select_menu(name),'primary').pack(anchor='w',padx=18,pady=6)
+            if 'USER_VIEW' in self.permissions:
+                summary=ctk.CTkFrame(view,fg_color='transparent')
+                summary.pack(fill='x',padx=24,pady=12)
+                cards={}
+                for index,(key,title) in enumerate((('total','System users'),('active','Active users'),('locked','Locked users'),('inactive','Inactive users'))):
+                    summary.grid_columnconfigure(index,weight=1,uniform='stats')
+                    cards[key]=StatCard(summary,title)
+                    cards[key].grid(row=0,column=index,sticky='ew',padx=4)
+                loader=AsyncLoader(view)
+                loader.submit('accounts',UserService(self.user.id).stats,
+                    lambda stats:[card.set(stats[key]) for key,card in cards.items()],
+                    lambda _:None)
+            self.attendance_metric=None
+            return
         view = HomeView(self.shell.content, self.member_service, self.attendance_service,
             self.attendance_capabilities, self.allowed_pages, self.select_menu, self.open_session)
         self.attendance_metric = view.cards['sunday']
@@ -95,15 +126,15 @@ class DashboardView(ctk.CTkFrame):
         ActionButton(card, 'Browse attendance', lambda: self.select_menu('Attendance'), 'primary').pack(anchor='w', padx=20, pady=(0, 20))
 
     def show_administration(self):
-        self.page('Administration', 'Roles, assigned ministry scopes and attendance access')
-        view = ctk.CTkFrame(self.shell.content, fg_color='transparent')
-        self.mount(view)
-        card = AppCard(view)
-        card.pack(fill='x', padx=24, pady=8)
-        label(card, 'Ministry attendance access', 20, True).pack(anchor='w', padx=20, pady=(20, 6))
-        label(card, 'Assign an existing account to a ministry and audit its attendance grants.', muted=True).pack(anchor='w', padx=20, pady=(0, 16))
-        if self.attendance_capabilities.get('can_manage_access'):
-            ActionButton(card, 'Manage access', lambda: MinistryAccessDialog(self, self.attendance_service), 'primary').pack(anchor='w', padx=20, pady=(0, 20))
+        self.page('Administration', 'Manage accounts, software roles and ministry scopes')
+        self.mount(AdministrationView(self.shell.content, self.user, self.permissions,
+            on_ministries=lambda:self.select_menu('Ministries')))
+
+    def authenticator(self):
+        from src.ui.login.account_security_dialogs import AuthenticatorSetupDialog
+        from src.services.auth_service import AuthService
+        service=getattr(self.user, '_auth_service', None) or AuthService()
+        return AuthenticatorSetupDialog(self, service, self.user)
 
     def select_menu(self, name):
         if name not in self.allowed_pages:

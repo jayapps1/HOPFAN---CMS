@@ -80,8 +80,8 @@ class LoginView(ctk.CTkFrame):
         for child in self.content.winfo_children():
             child.destroy()
         self.status_var.set('')
-        label(self.content, 'Email address', 11, True).pack(anchor='w', pady=(0,6))
-        self.email_field = IconEntry(self.content, self.email_var, 'mail', placeholder='name@example.com')
+        label(self.content, 'Email or username', 11, True).pack(anchor='w', pady=(0,6))
+        self.email_field = IconEntry(self.content, self.email_var, 'mail', placeholder='Email address or username')
         self.email_field.pack(fill='x')
         self.email_entry = self.email_field.entry
 
@@ -155,7 +155,12 @@ class LoginView(ctk.CTkFrame):
         self.busy = False
         self.selector.configure(state='normal')
         self.status_var.set('')
-        self.on_login_success(user)
+        self.password_var.set('')
+        if getattr(user, 'require_password_change', False):
+            from src.ui.login.account_security_dialogs import InitialPasswordDialog
+            InitialPasswordDialog(self, self.auth_service, user, self.on_login_success)
+        else:
+            self.on_login_success(user)
 
     def failed(self, error):
         self.busy = False

@@ -52,6 +52,6 @@ def navigation(capabilities):
         items.append(("SMS", "message"))
     if capabilities.get("can_view") and capabilities.get("can_report", "ATTENDANCE_EXPORT" in permissions):
         items.append(("Reports", "chart"))
-    if "ADMINISTRATION_VIEW" in permissions:
+    if "ADMINISTRATION_VIEW" in permissions or permissions.intersection({"USER_VIEW", "ROLE_VIEW", "PERMISSION_VIEW", "SECURITY_AUDIT_VIEW"}):
         items.append(("Administration", "settings"))
     return items

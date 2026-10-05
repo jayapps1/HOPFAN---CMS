@@ -79,3 +79,5 @@ Roster pages contain at most 30 rows, member directory pages 40, and session pag
 ## Remaining operational setup
 
 Assign actual officer accounts to their ministries through the access dialog. No production leader accounts or memberships were invented. Finance, Welfare, Sunday School and SMS need their own services before those planned workspaces become operational. Leadership positions must be maintained in the existing ministry membership data for the leadership roster to be populated.
+
+User administration, RBAC and ministry scopes: [implementation report](user_administration_report.md).

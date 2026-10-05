@@ -40,6 +40,10 @@ class MemberServiceError(Exception):
     pass
 
 
+class MemberAuthorizationError(MemberServiceError, AttendancePermissionError):
+    pass
+
+
 class MemberService:
     MEMBER_NUMBER_LOCK = 847201
 
@@ -51,8 +55,10 @@ class MemberService:
         with self.session_factory() as db:
             try:
                 yield db, load_access(db, self.user_id)
+            except MemberAuthorizationError:
+                raise
             except AttendancePermissionError as exc:
-                raise MemberServiceError(str(exc)) from exc
+                raise MemberAuthorizationError(str(exc)) from exc
             except SQLAlchemyError as exc:
                 db.rollback()
                 logging.getLogger(__name__).error("Member database operation failed: %s", type(exc).__name__)
@@ -61,17 +67,17 @@ class MemberService:
     @staticmethod
     def _require(access, permission):
         if not access.has(permission):
-            raise MemberServiceError("You do not have permission for this member operation.")
+            raise MemberAuthorizationError("You do not have permission for this member operation.")
 
     @staticmethod
     def _visible(access, stmt):
         if access.has("MEMBERS_VIEW_ALL"):
             return stmt
-        if not access.has("MEMBERS_VIEW_OWN_MINISTRY") or not access.scopes["view"]:
-            raise MemberServiceError("Member directory access is not assigned.")
+        if not access.has("MEMBERS_VIEW_OWN_MINISTRY") or not access.ministry_ids("MEMBERS_VIEW_OWN_MINISTRY"):
+            raise MemberAuthorizationError("Member directory access is not assigned.")
         membership = select(MemberMinistry.id).join(Ministry).where(
             MemberMinistry.member_id == Member.id, MemberMinistry.is_active.is_(True),
-            Ministry.is_active.is_(True), MemberMinistry.ministry_id.in_(access.scopes["view"])).exists()
+            Ministry.is_active.is_(True), MemberMinistry.ministry_id.in_(access.ministry_ids("MEMBERS_VIEW_OWN_MINISTRY"))).exists()
         return stmt.where(membership)
 
     # ------------------------------------------------------
@@ -552,8 +558,8 @@ class MemberService:
             )
 
             if member is None:
-                raise MemberServiceError(
-                    "Member not found."
+                raise MemberAuthorizationError(
+                    "Member not found or outside your assigned scope."
                 )
 
             result = self._member_dict(member)
@@ -629,15 +635,15 @@ class MemberService:
             if member_id:
                 member_uuid = uuid.UUID(str(member_id))
                 if not db.scalar(self._visible(access, select(Member.id)).where(Member.id==member_uuid)):
-                    raise MemberServiceError('Member not found or outside your scope.')
+                    raise MemberAuthorizationError('Member not found or outside your scope.')
                 existing = select(MemberMinistry.ministry_id).where(MemberMinistry.member_id==member_uuid,
                     MemberMinistry.is_active.is_(True))
                 eligible = or_(eligible,Ministry.id.in_(existing))
             stmt = select(Ministry).where(eligible)
             if not (access.has("MINISTRIES_VIEW_ALL") or access.has("MEMBERS_VIEW_ALL")):
                 if not (access.has("MINISTRIES_VIEW_OWN") or access.has("MEMBERS_VIEW_OWN_MINISTRY")):
-                    raise MemberServiceError("Ministry access is not assigned.")
-                stmt = stmt.where(Ministry.id.in_(access.scopes["view"]))
+                    raise MemberAuthorizationError("Ministry access is not assigned.")
+                stmt = stmt.where(Ministry.id.in_(access.ministry_ids("MEMBERS_VIEW_OWN_MINISTRY")))
             ministries = db.scalars(
                 stmt
                 .order_by(
@@ -745,8 +751,8 @@ class MemberService:
             member = db.scalar(self._visible(access, select(Member)).where(Member.id == member_uuid).with_for_update())
 
             if member is None:
-                raise MemberServiceError(
-                    "Member not found."
+                raise MemberAuthorizationError(
+                    "Member not found or outside your assigned scope."
                 )
 
             self._apply_fields(
@@ -832,8 +838,8 @@ class MemberService:
             member = db.scalar(self._visible(access, select(Member)).where(Member.id == member_uuid))
 
             if member is None:
-                raise MemberServiceError(
-                    "Member not found."
+                raise MemberAuthorizationError(
+                    "Member not found or outside your assigned scope."
                 )
 
             filename = (

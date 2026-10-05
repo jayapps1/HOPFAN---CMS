@@ -1,5 +1,7 @@
 import os
 import time
+import logging
+from src.ui.components.async_loader import AsyncLoader
 from pathlib import Path
 from tkinter import messagebox
 
@@ -55,6 +57,7 @@ class HopfanApplication:
 
         self.current_user = None
         self.current_view = None
+        self.session_loader = AsyncLoader(self.root)
 
         self.last_activity = (
             time.monotonic()
@@ -184,6 +187,18 @@ class HopfanApplication:
                     >= self.session_idle_seconds
                 ):
                     self.expire_session()
+                elif hasattr(self, 'session_loader') and hasattr(self.current_user, 'auth_revision'):
+                    user=self.current_user
+                    service=getattr(user, '_auth_service', None)
+                    if service:
+                        def checked(valid):
+                            if self.current_user is user and not valid:
+                                self.end_session_audit('SESSION_REVOKED')
+                                self.close_open_dialogs()
+                                self.show_login()
+                        self.session_loader.submit('session-valid',
+                            lambda:service.session_valid(user.id,user.auth_revision),checked,
+                            lambda _error:checked(False))
 
         finally:
             self.root.after(
@@ -195,6 +210,7 @@ class HopfanApplication:
         if self.current_user is None:
             return
 
+        self.end_session_audit('IDLE_EXPIRED')
         self.close_open_dialogs()
 
         self.show_login()
@@ -296,7 +312,15 @@ class HopfanApplication:
             on_toggle_theme=self.toggle_theme,
         )
 
+    def end_session_audit(self,action):
+        user=self.current_user
+        service=getattr(user,'_auth_service',None)
+        if service and hasattr(self,'session_loader'):
+            self.session_loader.submit('session-end',lambda:service.record_session_end(user.id,action),
+                lambda _:None,lambda error:logging.getLogger(__name__).error('Session audit failed: %s',type(error).__name__))
+
     def logout(self):
+        self.end_session_audit('LOGOUT')
         self.close_open_dialogs()
         self.show_login()
 

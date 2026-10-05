@@ -70,19 +70,6 @@ def seed_initial_admin():
             print("Role: ADMINISTRATOR")
 
         else:
-            changed = False
-
-            if admin_role not in user.roles:
-                user.roles.append(admin_role)
-                changed = True
-
-            if user.status != UserStatus.ACTIVE:
-                user.status = UserStatus.ACTIVE
-                changed = True
-
-            if changed:
-                db.commit()
-
             print("Initial administrator already exists.")
             print(f"Email: {user.email}")
             print("Role: ADMINISTRATOR")

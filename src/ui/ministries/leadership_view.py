@@ -116,7 +116,7 @@ class MinistryLeadershipView(ctk.CTkFrame):
         Avatar(card, row['full_name'], row['photo_path'], size=36).grid(row=0, column=0, rowspan=3, padx=10, pady=12)
         label(card, row['position_name'], 14, True, anchor='w', width=1, wraplength=360).grid(row=0, column=1, sticky='ew', pady=(10,0))
         label(card, row['full_name']+' · '+row['member_no'], 12, anchor='w', width=1, wraplength=350).grid(row=1, column=1, sticky='ew')
-        period = display_date(row['start_date'])+' – '+(display_date(row['end_date']) if row['end_date'] else 'Present')
+        period = ('No system account ? ' if row.get('has_system_account') is False else '') + display_date(row['start_date'])+' – '+(display_date(row['end_date']) if row['end_date'] else 'Present')
         label(card, period, 11, muted=True, anchor='w').grid(row=2, column=1, sticky='ew', pady=(0,10))
         StatusBadge(card, 'CURRENT' if row['is_current'] else 'HISTORICAL').grid(row=0, column=2, rowspan=3, padx=8)
         actions = ctk.CTkFrame(card, fg_color='transparent')
@@ -126,9 +126,19 @@ class MinistryLeadershipView(ctk.CTkFrame):
         choices=[]
         if self.capabilities.get('edit'): choices.append(('Edit assignment',lambda:self.edit(row)))
         if row['is_current'] and self.capabilities.get('end'): choices.append(('End assignment',lambda:self.end(row)))
+        if self.capabilities.get('grant_system_access') and not row.get('has_system_account', True):
+            choices.append(('Grant system access',lambda:self.grant_access(row)))
         if choices:
             card.action_menu=ActionMenu(actions, choices)
             card.action_menu.pack(side='left', padx=4)
+
+    def grant_access(self, row):
+        from src.services.user_service import UserService
+        from src.ui.administration.dialogs import UserFormDialog
+        service=UserService(self.service.user_id, self.service.session_factory)
+        self.loader.submit('member-link',lambda:service.member_link(row['member_id']),
+            lambda member:UserFormDialog(self,service,lambda _:self.refresh(),member=member),
+            lambda error:self.notice.configure(text=str(error)))
 
     def vacancy(self, index, position):
         card=AppCard(self.rows)

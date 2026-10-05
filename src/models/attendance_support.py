@@ -16,6 +16,10 @@ class UserMinistryScope(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
     ministry_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("ministries.id", ondelete="RESTRICT"), index=True)
+    # Historical attendance grants keep their restrictions. New administration
+    # scopes use role capabilities; these legacy flags do not apply to them.
+    legacy_attendance_limits: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     can_view_attendance: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     can_create_attendance: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     can_record_attendance: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
