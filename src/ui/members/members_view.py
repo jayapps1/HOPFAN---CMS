@@ -150,6 +150,18 @@ class MemberProfileDialog(FixedFooterDialog):
             row.grid_columnconfigure(1, weight=1)
             label(row, title, 12, muted=True, width=150, anchor='w').grid(row=0,column=0,padx=12,pady=10)
             label(row, value or '—', 13, anchor='w', wraplength=430, justify='left').grid(row=0,column=1,sticky='ew',padx=12,pady=10)
+        label(self.content, 'Leadership / Positions', 17, True).pack(anchor='w', padx=16, pady=(20, 8))
+        leadership = member.get('leadership', [])
+        if not leadership:
+            label(self.content, 'No position assignments available in your permitted ministries.', 12, muted=True,
+                  wraplength=600, justify='left').pack(anchor='w', padx=16, pady=(0, 16))
+        for appointment in leadership:
+            row = AppCard(self.content)
+            row.pack(fill='x', padx=16, pady=4)
+            label(row, appointment['ministry_name'], 12, muted=True, anchor='w').pack(fill='x', padx=14, pady=(10, 2))
+            label(row, appointment['position_name'], 15, True, anchor='w').pack(fill='x', padx=14)
+            period = display_date(appointment['start_date'])+' – '+(display_date(appointment['end_date']) if appointment['end_date'] else 'Present')
+            label(row, period+' · '+('Current' if appointment['is_current'] else 'Historical'), 12, muted=True).pack(anchor='w', padx=14, pady=(4, 12))
 
     def edit_member(self):
         if self.member:

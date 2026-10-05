@@ -24,6 +24,7 @@ from src.models.member import (
 )
 from src.models.member_ministry import MemberMinistry
 from src.models.ministry import Ministry
+from src.models.ministry_leadership import MinistryLeadershipAssignment
 from src.security.attendance_permissions import load_access, AttendancePermissionError
 
 
@@ -555,9 +556,13 @@ class MemberService:
                     "Member not found."
                 )
 
-            return self._member_dict(
-                member
-            )
+            result = self._member_dict(member)
+            if access.has('MINISTRY_LEADERSHIP_VIEW') or access.has('MINISTRY_LEADERSHIP_VIEW_ALL'):
+                from src.services.ministry_leadership_service import MinistryLeadershipService
+                result['leadership'] = MinistryLeadershipService.member_leadership(db, access, member.id)
+            else:
+                result['leadership'] = []
+            return result
 
     # ------------------------------------------------------
     # STATISTICS
@@ -737,7 +742,7 @@ class MemberService:
 
         with self._db() as (db, access):
             self._require(access, "MEMBERS_EDIT")
-            member = db.scalar(self._visible(access, select(Member)).where(Member.id == member_uuid))
+            member = db.scalar(self._visible(access, select(Member)).where(Member.id == member_uuid).with_for_update())
 
             if member is None:
                 raise MemberServiceError(
@@ -758,6 +763,10 @@ class MemberService:
             retained = {mid for mid,row in existing.items() if row.is_active}
             if not set(selected).issubset(active_ministries | retained):
                 raise MemberServiceError("Select active ministries. Existing inactive/archived participation may be retained or explicitly removed.")
+            current_positions = db.scalars(select(MinistryLeadershipAssignment.ministry_id).where(
+                MinistryLeadershipAssignment.member_id == member_uuid, MinistryLeadershipAssignment.is_current.is_(True))).all()
+            if any(mid not in selected for mid in current_positions) or (current_positions and member.status != MemberStatus.ACTIVE):
+                raise MemberServiceError('End current position assignments before removing ministry participation or deactivating this member.')
             for mid, row in existing.items():
                 if mid not in selected and row.is_active:
                     row.is_active, row.is_primary, row.left_at = False, False, date.today()

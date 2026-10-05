@@ -14,7 +14,7 @@ from src.models import (
     AttendanceAuditLog, AttendanceRecord, AttendanceRosterMember, AttendanceRosterType,
     AttendanceScopeType, AttendanceSession, AttendanceSessionState, AttendanceSessionType,
     AttendanceStatus, AuthorizationAuditLog, Member, MemberMinistry, MemberStatus,
-    Ministry, Role, User, UserMinistryScope,
+    Ministry, Role, User, UserMinistryScope, MinistryPosition, MinistryLeadershipAssignment,
 )
 from src.security.attendance_permissions import AttendancePermissionError, load_access
 
@@ -233,7 +233,15 @@ class AttendanceService:
                 MemberMinistry.member_id == Member.id, MemberMinistry.ministry_id == ministry_id,
                 MemberMinistry.is_active.is_(True))
             if executives:
-                membership = membership.where(func.trim(MemberMinistry.position_title) != "")
+                structured = select(MinistryLeadershipAssignment.id).join(MinistryPosition,
+                    MinistryPosition.id == MinistryLeadershipAssignment.position_id).where(
+                    MinistryLeadershipAssignment.member_id == Member.id,
+                    MinistryLeadershipAssignment.ministry_id == ministry_id,
+                    MinistryLeadershipAssignment.is_current.is_(True), MinistryPosition.is_leadership.is_(True)).correlate(Member).exists()
+                modernized = select(MinistryLeadershipAssignment.id).where(
+                    MinistryLeadershipAssignment.member_id == Member.id,
+                    MinistryLeadershipAssignment.ministry_id == ministry_id).correlate(Member).exists()
+                membership = membership.where(or_(structured, and_(~modernized, func.trim(MemberMinistry.position_title) != "")))
             stmt = stmt.where(membership.exists())
         return stmt
 

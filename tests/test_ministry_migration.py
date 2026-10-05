@@ -29,7 +29,7 @@ class MinistryMigrationTests(unittest.TestCase):
                 connection.execute(text('INSERT INTO user_roles(user_id,role_id) VALUES (:user,:role)'),dict(user=user,role=role))
                 fingerprints={table:connection.execute(text(f'SELECT id::text,md5(row_to_json(t)::text) FROM (SELECT * FROM {table} ORDER BY id) t')).all() for table in ('members','member_ministries','users')}
                 original=connection.execute(text('SELECT id,code,name,is_active,created_at,updated_at FROM ministries ORDER BY id')).all()
-                command.upgrade(config,'head')
+                command.upgrade(config,'d7f9215c8a30')
                 self.assertEqual(original,connection.execute(text('SELECT id,code,name,is_active,created_at,updated_at FROM ministries ORDER BY id')).all())
                 for table,rows in fingerprints.items():
                     self.assertEqual(rows,connection.execute(text(f'SELECT id::text,md5(row_to_json(t)::text) FROM (SELECT * FROM {table} ORDER BY id) t')).all())

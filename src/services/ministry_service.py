@@ -8,7 +8,8 @@ from sqlalchemy import case, func, inspect, or_, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from src.config.database import SessionLocal
 from src.models import (Ministry, MinistryAuditLog, Member, MemberMinistry, MemberStatus,
-    AttendanceSession, UserMinistryScope, AuthorizationAuditLog, User)
+    AttendanceSession, UserMinistryScope, AuthorizationAuditLog, User,
+    MinistryPosition, MinistryLeadershipAssignment, MinistryLeadershipAuditLog)
 from src.security.attendance_permissions import load_access, AttendancePermissionError
 
 CATEGORIES = ('MINISTRY','FELLOWSHIP','DEPARTMENT','UNIT','OTHER')
@@ -88,7 +89,8 @@ class MinistryService:
     @staticmethod
     def _known_dependencies():
         return or_(*(select(model.id).where(model.ministry_id==Ministry.id).exists()
-            for model in (MemberMinistry,AttendanceSession,UserMinistryScope,AuthorizationAuditLog)))
+            for model in (MemberMinistry,AttendanceSession,UserMinistryScope,AuthorizationAuditLog,
+                          MinistryPosition,MinistryLeadershipAssignment,MinistryLeadershipAuditLog)))
 
     @staticmethod
     def _dto(ministry,members=0,active_members=0,in_use=False):

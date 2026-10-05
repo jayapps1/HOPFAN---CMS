@@ -6,6 +6,8 @@ The subsequent member form, dropdown and login refinements are documented in [UI
 
 Administrator ministry configuration, lifecycle, migration and member/attendance integration are documented in [Ministry Management report](ministry_management_report.md).
 
+Configurable church positions, appointments, history and scoped profile integration are documented in [Ministry Leadership report](ministry_leadership_report.md).
+
 ## Delivered behavior
 
 - A Sunday service is a global session with a saved whole-church roster. Administrator **All Members** and ministry filters read the same session and attendance records. Filtering never creates another session or roster.

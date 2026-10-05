@@ -11,6 +11,7 @@ from src.models.member import (
 from src.models.ministry import Ministry
 from src.models.ministry_audit import MinistryAuditLog
 from src.models.member_ministry import MemberMinistry
+from src.models.ministry_leadership import MinistryPosition, MinistryLeadershipAssignment, MinistryLeadershipAuditLog
 
 from src.models.user import User, UserStatus
 
@@ -41,6 +42,9 @@ __all__ = [
     "Ministry",
     "MinistryAuditLog",
     "MemberMinistry",
+    "MinistryPosition",
+    "MinistryLeadershipAssignment",
+    "MinistryLeadershipAuditLog",
     "AttendanceSession",
     "AttendanceSessionState",
     "AttendanceSessionType",
