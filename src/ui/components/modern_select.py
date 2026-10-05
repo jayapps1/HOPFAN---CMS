@@ -101,6 +101,8 @@ class ModernSelect(ctk.CTkFrame):
             self.values = list(dict.fromkeys(str(value) for value in kwargs.pop('values')))
         if 'command' in kwargs:
             self.command = kwargs.pop('command')
+        if 'placeholder' in kwargs:
+            self.placeholder = kwargs.pop('placeholder')
         if 'state' in kwargs:
             self.state = kwargs.pop('state')
             if self.state == 'disabled':
@@ -114,6 +116,8 @@ class ModernSelect(ctk.CTkFrame):
             return self.state
         if name == 'values':
             return self.values
+        if name == 'placeholder':
+            return self.placeholder
         return super().cget(name)
 
     def destroy(self):

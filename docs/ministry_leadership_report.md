@@ -8,9 +8,11 @@ Implemented 5 October 2026 in the existing desktop application. Start the applic
 - `src/services/ministry_leadership_service.py`
 - `src/ui/ministries/leadership_view.py`
 - `src/ui/ministries/leadership_dialogs.py`
+- `src/database/seed_ministry_positions.py` (requested default offices)
 - `migrations/versions/e8b4026d9f10_ministry_leadership.py`
 - `tests/test_leadership.py`
 - `tests/test_leadership_migration.py`
+- `tests/test_seed_ministry_positions.py`
 - `tests/test_ui_leadership.py`
 - `tests/leadership_preview.py`
 - This report and synthetic desktop captures in `docs/screenshots/ministry_leadership/`.
@@ -92,6 +94,8 @@ Manage Positions lists name, code, type, active status, order, current holders a
 
 Assign Position uses a searchable, paginated member picker with avatars, names, membership numbers, phones and membership eligibility. Position options come from PostgreSQL. Start/end controls reuse the shared DatePicker with direct month/year navigation and DD/MM/YYYY display. Fixed footers remain visible in forms, details and confirmations.
 
+The 2026-10-05 Youth Ministry assignment fix distinguishes loading, empty and failed position queries. Youth Ministry had no defined positions, so an empty result previously left the loading placeholder on screen. The selector now shows **No active ministry positions** with a clear next step. Administrators with Position Create can use **Add position** directly inside the assignment form; saving selects the new position while preserving the chosen member, dates and notes. Accounts without that permission receive guidance to contact an administrator. Failed queries show **Retry loading** and keep assignment disabled until positions load successfully.
+
 An absent ministry membership produces a clear message and an authorized Add to ministry and continue confirmation. A single-holder conflict shows the current member and a controlled End and appoint confirmation. Appointment details show recorded audit history. Leaders receive scoped reading controls without configuration actions.
 
 ## 9. Member profile and attendance integration
@@ -120,6 +124,8 @@ Replacement checks the exact current holder and previously loaded version. The t
 
 ## 12. Tests performed
 
+Follow-up validation for the 2026-10-05 position-selector fix passed **24 distinct tests**: all 16 leadership service tests, seven leadership desktop tests and the shared dropdown keyboard/search/lifecycle test. Three new desktop tests cover adding a position during assignment with member/date/note retention, failed loading followed by retry, and empty/inactive positions without creation permission. Existing leadership layouts passed at all three sizes in both themes. Syntax compilation and `git diff --check` passed.
+
 All **71 tests passed**: 53 database/session cases and 18 desktop cases. The database suite includes the existing 36 cases plus 16 leadership cases and one full leadership migration case. Coverage includes required A–J scenarios, account/role separation, explicit enrollment, replacement rollback, simultaneous single-holder appointments, case uniqueness, member profile scope, history retention, protected deletion, query count stability, date/identity/stale guards and saved attendance roster preservation. The final scoped-permission changes passed all 16 leadership service cases again.
 
 The desktop suite covers the existing 14 login/member/attendance/ministry cases and four new leadership cases. New cases exercise all three desktop sizes in both themes, position management, assignment forms, member search/pagination/avatars, replacement cancellation/confirmation, membership confirmation, ending/editing/history, profiles and leader controls. The minimum-size screenshot review prompted compact summaries and tab-bar actions, with a further check that the whole first appointment row fits its actual scroll viewport.
@@ -146,12 +152,38 @@ From `D:\HOPFAN`:
 .venv\Scripts\python.exe hopfan.py
 ```
 
-The migration is already applied locally. `upgrade head` is repeatable. Desktop tests require an interactive Windows desktop. Open Ministries, View a ministry, then Leadership; define positions before appointing officers.
+The migration is already applied locally. `upgrade head` is repeatable. Desktop tests require an interactive Windows desktop. Open Ministries, View a ministry, then Leadership; select a seeded position or define an additional office before appointing officers.
 
 ## 14. Remaining decisions and limits
 
-Administrators must choose each ministry's actual position titles and capacity; no default offices were guessed or hardcoded. Existing free-text participation titles are retained for review and are not automatically converted into dated assignments. Dates and office holders should be confirmed before those records are entered.
+The five requested baseline offices are seeded as editable position records. Administrators can customize each ministry's titles and capacity. Existing free-text participation titles are retained for review and are not automatically converted into dated assignments. Dates and office holders should be confirmed before those records are entered.
 
 Scheduled future appointments and automatic term expiry require a separate agreed lifecycle. This module records already-started/open or completed terms. Software account creation and role/scope assignment continue through the existing separate administration process; recommendations based on offices are not automatically granted.
 
 Dues, welfare, SMS, meetings, reporting pages and a redesigned dashboard remain future modules. The stable identifiers, current/history/vacancy service queries and audit records provide their foundation. Desktop verification covers the installed Windows DPI at 1366x768, 1600x900 and 1920x1080, with Windows chrome excluded, rather than every monitor/OS configuration. A full backup restore drill is still a separate operational check.
+
+## 15. Default position seed and management
+
+On 2026-10-05, the requested default offices were added to every existing ministry: **70 positions across 14 ministries**, with five selectable offices in each. Youth Ministry now has:
+
+- Youth Leader
+- Youth Secretary
+- Youth Assistant Leader
+- Youth Organizer
+- Youth Treasurer
+
+Names use the ministry's display name with its trailing Ministry/Fellowship/Department/Unit removed. Codes are scoped to the ministry: `LEADER`, `SECRETARY`, `ASSISTANT_LEADER`, `ORGANIZER`, `TREASURER`. Each office starts with one current holder allowed and can be edited to allow more or Unlimited. Offices created for inactive/archived ministries start inactive.
+
+The repeatable seeder creates missing defaults and records `POSITION_SEEDED` audit events under an authorized administrator. Existing matching codes/names, including generic office names, are preserved. Position edit and deletion history prevent a subsequent seed run from undoing deliberate renaming, deactivation or deletion. A second local run created **0** new rows and retained all 70 existing offices. Future ministries receive their missing offices when the seeder runs again.
+
+```powershell
+.venv\Scripts\python.exe -m src.database.seed_ministry_positions
+```
+
+The command resolves the administrator from the configured seed email/username and checks active-account, church-wide ministry and Position Create permissions. Use `--actor-id UUID` to choose another authorized administrator explicitly.
+
+Position management is available at **Ministries → View → Leadership → Manage positions**, and directly through **Manage positions** in the assignment form. Create, edit, deactivate and delete-unused operations refresh the assignment dropdown while retaining the chosen member and form entries. To reactivate an office, choose Inactive or All, edit it, and set its status to Active. Positions with appointment history are deactivated rather than permanently deleted; their history is preserved. These church offices grant no software roles or scopes.
+
+The verified pre-seed archive is `backups/before_user_administration_20261005T211046Z.dump`, with its matching `_snapshot.json`. Original-column fingerprints were verified across all 19 pre-existing application tables; only the requested position and leadership-audit additions occurred. Database backups remain excluded from Git.
+
+Seeder validation passed **31 distinct tests**: seven new seeder cases, the existing 16 leadership service cases and all eight leadership desktop cases. Seeder coverage includes names, repeat runs, existing equivalents, management changes, inactive/archived ministries, later ministries, actor authorization and long names. The new desktop case exercises selection and management of the five seeded offices, including dropdown refresh after editing, deactivation, deletion and creation. Existing layouts passed at all three sizes in both themes; syntax compilation and `git diff --check` also passed.

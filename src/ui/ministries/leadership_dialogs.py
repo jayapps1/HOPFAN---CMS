@@ -187,8 +187,19 @@ class AssignmentFormDialog(LeadershipDialog):
         self.person.pack(fill='x', padx=16)
         self.render_member()
         heading(self.content, 'Position *')
-        self.position = ModernSelect(self.content, [], placeholder='Loading ministry positions…')
+        self.position = ModernSelect(self.content, [], placeholder='Loading ministry positions…', state='disabled')
         self.position.pack(fill='x', padx=16)
+        self.position_notice = label(self.content, '', 12, muted=True, anchor='w', justify='left', width=1, wraplength=540)
+        self.position_notice.pack(fill='x', padx=16, pady=(6, 0))
+        self.position_actions = ctk.CTkFrame(self.content, fg_color='transparent', height=1)
+        self.position_actions.pack(fill='x', padx=16, pady=(4, 0))
+        self.add_position_button = ActionButton(self.position_actions, 'Add position', self.add_position, width=130)
+        if not assignment and self.capabilities.get('position_create'):
+            self.add_position_button.pack(side='left')
+        self.manage_positions_button = ActionButton(self.position_actions, 'Manage positions', self.manage_positions, width=150)
+        if self.capabilities.get('positions_view'):
+            self.manage_positions_button.pack(side='left', padx=(8, 0))
+        self.retry_positions_button = ActionButton(self.position_actions, 'Retry loading', self.load_positions, width=130)
         heading(self.content, 'Start date *')
         self.start = DatePicker(self.content, initial_date=assignment['start_date'] if assignment else date.today(), height=46)
         self.start.pack(fill='x', padx=16)
@@ -204,8 +215,47 @@ class AssignmentFormDialog(LeadershipDialog):
         self.save_button = ActionButton(self.footer, 'Save assignment' if assignment else 'Assign position', self.save, 'primary', width=170)
         self.save_button.pack(side='right', padx=18, pady=14)
         self.save_button.configure(state='disabled')
-        self.loader.submit('positions', lambda:service.list_positions(ministry['id'], active_only=not bool(assignment)),
-            lambda rows:self.loaded_positions(rows, position_id), lambda error:self.error_var.set(str(error)))
+        self.load_positions(position_id)
+
+    def load_positions(self, position_id=None, position_code=None):
+        previous = self.positions.get(self.position.get())
+        position_id = position_id or (previous['id'] if previous else None)
+        self.positions = {}
+        self.position.set('')
+        self.position.configure(values=[], placeholder='Loading ministry positions…', state='disabled')
+        self.position_notice.configure(text='')
+        self.error_var.set('')
+        self.request = None
+        self.membership_button.pack_forget()
+        self.retry_positions_button.pack_forget()
+        self.save_button.configure(state='disabled')
+        self.loader.submit('positions', lambda:self.service.list_positions(self.ministry['id'], active_only=not bool(self.assignment)),
+            lambda rows:self.loaded_positions(rows, position_id, position_code), self.positions_failed)
+
+    def positions_failed(self, error):
+        self.position.configure(placeholder='Unable to load ministry positions', state='disabled')
+        self.position_notice.configure(text='Positions could not be loaded. Retry to continue.')
+        self.error_var.set(str(error))
+        self.save_button.configure(state='disabled')
+        self.retry_positions_button.pack(side='left', padx=(8, 0))
+
+    def add_position(self):
+        if self.assignment or not self.capabilities.get('position_create'):
+            return
+        def created():
+            self.load_positions(position_code=form.code.get().strip().upper())
+            self.on_saved()
+        form = PositionFormDialog(self, self.service, self.ministry, created, capabilities=self.capabilities)
+        return form
+
+    def manage_positions(self):
+        if not self.capabilities.get('positions_view'):
+            return
+        from src.ui.ministries.leadership_view import PositionManagerDialog
+        def changed():
+            self.load_positions()
+            self.on_saved()
+        return PositionManagerDialog(self, self.service, self.ministry, changed)
 
     def render_member(self):
         for widget in self.person.winfo_children(): widget.destroy()
@@ -227,18 +277,22 @@ class AssignmentFormDialog(LeadershipDialog):
         self.render_member()
         self.error_var.set('')
 
-    def loaded_positions(self, rows, position_id):
+    def loaded_positions(self, rows, position_id, position_code=None):
         self.positions = {row['name']+' · '+row['code']:row for row in rows}
-        self.position.configure(values=list(self.positions))
-        selected_id = self.assignment['position_id'] if self.assignment else position_id
-        chosen = next((key for key, row in self.positions.items() if row['id'] == selected_id), next(iter(self.positions), ''))
+        self.position.configure(values=list(self.positions),
+            placeholder='Choose a ministry position' if rows else 'No active ministry positions',
+            state='disabled' if self.assignment or not rows else 'readonly')
+        selected_id = self.assignment['position_id'] if self.assignment else (None if position_code else position_id)
+        chosen = next((key for key, row in self.positions.items() if row['id'] == selected_id or (position_code and row['code'] == position_code)), next(iter(self.positions), ''))
         self.position.set(chosen)
-        if self.assignment:
-            self.position.configure(state='disabled')
+        self.retry_positions_button.pack_forget()
         if rows:
+            self.position_notice.configure(text='')
             self.save_button.configure(state='normal')
         else:
-            self.error_var.set('Define an active ministry position before appointing a member.')
+            self.save_button.configure(state='disabled')
+            detail = 'Add a position such as Leader, then assign the selected member.' if not self.assignment and self.capabilities.get('position_create') else 'Ask an administrator to add or activate a position for this ministry.'
+            self.position_notice.configure(text=detail)
 
     def save(self):
         if self.save_button.cget('state') == 'disabled': return

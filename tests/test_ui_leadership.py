@@ -10,6 +10,8 @@ from src.ui.ministries.profile import MinistryProfileDialog
 from src.ui.ministries.leadership_dialogs import AssignmentFormDialog, LeadershipMemberPicker, EndAssignmentDialog, AssignmentProfileDialog
 from src.ui.components.modern import ConfirmationDialog
 from src.ui.members.members_view import MemberProfileDialog
+from src.services.ministry_leadership_service import LeadershipServiceError
+from src.database.seed_ministry_positions import DEFAULT_POSITIONS, position_name
 
 
 class LeadershipUiTests(unittest.TestCase):
@@ -32,6 +34,135 @@ class LeadershipUiTests(unittest.TestCase):
         self.wait_for(lambda:view.cards['current'].value.cget('text')!='—')
         self.pump()
         return dialog,view,service
+
+    def test_add_position_during_assignment_preserves_member_and_dates(self):
+        for mode in ('light','dark'):
+            for empty in (True,False):
+                with self.subTest(mode=mode,empty=empty):
+                    ctk.set_appearance_mode(mode)
+                    ministry=PreviewMinistryService(count=1).rows[0]
+                    service=PreviewLeadershipService(ministry,current=False)
+                    if empty:
+                        service.positions.clear()
+                    changed=Mock()
+                    form=AssignmentFormDialog(self.root,service,ministry,changed,service.capabilities(ministry['id']))
+                    member=service.members[0]
+                    form.selected(member)
+                    start=date(2026,10,1)
+                    form.start.variable.set(start.strftime('%d/%m/%Y'))
+                    form.notes.insert('1.0','Youth appointment notes')
+                    self.wait_for(lambda:form.position.cget('placeholder')!='Loading ministry positions…')
+                    if empty:
+                        self.assertEqual(form.position.value_label.cget('text'),'No active ministry positions')
+                        self.assertEqual(form.position.cget('state'),'disabled')
+                        self.assertEqual(form.save_button.cget('state'),'disabled')
+                        self.assertIn('Add a position',form.position_notice.cget('text'))
+                    self.assert_visible_in(form.add_position_button,form)
+                    self.assert_visible_in(form.cancel_button,form)
+                    position=form.add_position()
+                    self.pump()
+                    position.name.insert(0,'Leader' if empty else 'Youth Coordinator')
+                    position.suggest()
+                    position.save()
+                    self.wait_for(lambda:not position.winfo_exists(),timeout=8)
+                    self.wait_for(lambda:form.save_button.cget('state')=='normal')
+                    selected=service.positions[-1]
+                    self.assertEqual(form.positions[form.position.get()]['id'],selected['id'])
+                    self.assertEqual(form.position.cget('state'),'readonly')
+                    self.assertEqual(form.member,member)
+                    self.assertEqual(form.start.get_date(),start)
+                    self.assertEqual(form.notes.get('1.0','end-1c'),'Youth appointment notes')
+                    changed.assert_called_once()
+                    form.save()
+                    self.wait_for(lambda:not form.winfo_exists(),timeout=8)
+                    self.assertEqual(service.appointments[-1]['member_id'],member['id'])
+                    self.assertEqual(service.appointments[-1]['position_id'],selected['id'])
+                    self.assertEqual(service.appointments[-1]['start_date'],start)
+
+    def test_position_loading_error_can_be_retried(self):
+        ministry=PreviewMinistryService(count=1).rows[0]
+        service=PreviewLeadershipService(ministry,current=False)
+        rows=service.list_positions(ministry['id'])
+        service.list_positions=Mock(side_effect=[LeadershipServiceError('Synthetic positions unavailable'),rows])
+        form=AssignmentFormDialog(self.root,service,ministry,Mock(),service.capabilities(ministry['id']))
+        member=service.members[0]
+        form.selected(member)
+        self.wait_for(lambda:bool(form.error_var.get()))
+        self.assertEqual(form.position.value_label.cget('text'),'Unable to load ministry positions')
+        self.assertEqual(form.save_button.cget('state'),'disabled')
+        self.assertEqual(form.position.cget('state'),'disabled')
+        self.assert_visible_in(form.retry_positions_button,form)
+        form.retry_positions_button.invoke()
+        self.wait_for(lambda:form.save_button.cget('state')=='normal')
+        self.assertEqual(form.error_var.get(),'')
+        self.assertFalse(form.retry_positions_button.winfo_ismapped())
+        self.assertEqual(form.member,member)
+        self.assertEqual(service.list_positions.call_count,2)
+        form.destroy()
+
+    def test_empty_positions_without_creation_permission(self):
+        ministry=PreviewMinistryService(count=1).rows[0]
+        service=PreviewLeadershipService(ministry,management=False,current=False)
+        for position in service.positions:
+            position['is_active']=False
+        form=AssignmentFormDialog(self.root,service,ministry,Mock(),service.capabilities(ministry['id']))
+        self.wait_for(lambda:form.position.cget('placeholder')!='Loading ministry positions…')
+        self.assertEqual(form.position.value_label.cget('text'),'No active ministry positions')
+        self.assertIn('Ask an administrator',form.position_notice.cget('text'))
+        self.assertFalse(form.add_position_button.winfo_ismapped())
+        self.assertIsNone(form.add_position())
+        self.assertEqual(form.save_button.cget('state'),'disabled')
+        self.assertEqual(len(service.positions),2)
+        form.destroy()
+
+    def test_manage_seeded_positions_from_assignment_updates_dropdown(self):
+        ministry=PreviewMinistryService(count=1).rows[0]
+        service=PreviewLeadershipService(ministry,current=False)
+        service.positions.clear()
+        for order,(code,title) in enumerate(DEFAULT_POSITIONS,start=1):
+            service.create_position(ministry['id'],dict(code=code,name=position_name(ministry['name'],title),sort_order=order*10))
+        form=AssignmentFormDialog(self.root,service,ministry,Mock(),service.capabilities(ministry['id']))
+        self.wait_for(lambda:form.save_button.cget('state')=='normal')
+        member=service.members[0]
+        form.selected(member)
+        secretary=next(key for key,row in form.positions.items() if row['code']=='SECRETARY')
+        form.position.set(secretary)
+        self.assert_visible_in(form.manage_positions_button,form)
+        manager=form.manage_positions()
+        self.wait_for(lambda:len(manager.positions)==5)
+        rows={row['code']:row for row in manager.positions}
+        edit=manager.edit(rows['SECRETARY'])
+        edit.name.delete(0,'end')
+        edit.name.insert(0,'Youth Administrative Secretary')
+        edit.save()
+        self.wait_for(lambda:not edit.winfo_exists())
+        self.wait_for(lambda:form.position.get().startswith('Youth Administrative Secretary'))
+        self.assertEqual(form.member,member)
+        confirm=manager.change(rows['LEADER'],'deactivate')
+        self.pump()
+        confirm.confirm()
+        self.wait_for(lambda:not confirm.winfo_exists())
+        self.wait_for(lambda:len(form.positions)==4)
+        self.assertNotIn('LEADER',{row['code'] for row in form.positions.values()})
+        confirm=manager.change(rows['TREASURER'],'delete')
+        self.pump()
+        confirm.confirm()
+        self.wait_for(lambda:not confirm.winfo_exists())
+        self.wait_for(lambda:len(manager.positions)==4 and len(form.positions)==3)
+        new=manager.add()
+        new.name.insert(0,'Youth Chaplain')
+        new.suggest()
+        new.save()
+        self.wait_for(lambda:not new.winfo_exists())
+        self.wait_for(lambda:len(form.positions)==4)
+        self.assertIn('YOUTH_CHAPLAIN',{row['code'] for row in form.positions.values()})
+        self.assertEqual(form.member,member)
+        self.assertTrue(form.position.get().startswith('Youth Administrative Secretary'))
+        manager.destroy()
+        form.save()
+        self.wait_for(lambda:not form.winfo_exists())
+        self.assertEqual(service.appointments[-1]['member_id'],member['id'])
+        self.assertEqual(service.appointments[-1]['position_code'],'SECRETARY')
 
     def test_leadership_and_position_manager_all_sizes_both_themes(self):
         for width,height in ((1366,768),(1600,900),(1920,1080)):

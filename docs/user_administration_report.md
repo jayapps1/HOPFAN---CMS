@@ -1,8 +1,8 @@
 # User administration, RBAC and ministry scopes
 
-Implemented in the existing HOPFAN project. Local database deployment is **pending explicit approval** for migration `a91c73d5f204`. The local database remains at `e8b4026d9f10`; the new application code requires the pending migration before normal sign-in. Automatic approval review rejected the attempted local upgrade because it requires explicit authorization for the schema and access-record changes. No workaround was used.
+Implemented in the existing HOPFAN project. Local database deployment is **complete** at migration `a91c73d5f204`. On 2026-10-05, the seeded-admin sign-in failure was traced to the database remaining at `e8b4026d9f10`, without `users.require_password_change`, `users.auth_revision` or `security_audit_logs`. The configured seed password matched the active account; its credentials did not need resetting. After a fresh verified backup and approval of the repair, the forward migration was applied successfully.
 
-The forward migration was executed and checked successfully in a private test transaction. The production schema was not reset. Existing users, password hashes, encrypted authenticator data, roles, grants, memberships, attendance history and church positions were retained.
+The forward migration was executed and checked successfully in both a private test transaction and the local database. Existing users, password hashes, encrypted authenticator data, roles, grants, memberships, attendance history and church positions were retained. Seeded-admin authentication with both email and username, session validation and administration access passed. Verification-only login changes were rolled back, and original-column fingerprints still match for all 18 existing application tables.
 
 ## 1. Files created
 
@@ -60,14 +60,14 @@ The migration is forward-only. Its private migration test verifies every origina
 
 Verified local backup:
 
-- `backups/before_user_administration_20261005T193819Z.dump`
-- `backups/before_user_administration_20261005T193819Z_snapshot.json`
+- `backups/before_user_administration_20261005T204108Z.dump`
+- `backups/before_user_administration_20261005T204108Z_snapshot.json`
 
 The archive was created using PostgreSQL 18 `pg_dump` and verified with `pg_restore --list`. The snapshot contains column names and row hashes. Credentials stay in the child-process environment. Neither backups nor private authentication data are committed to Git.
 
-Original rows across all 18 recorded application tables match the pre-upgrade snapshot. A comparison against the earlier leadership backup identified only an existing user's `updated_at` difference; password/authenticator values and other account fields matched. The new backup is the baseline for this pending upgrade.
+Original rows across all 18 recorded application tables match the pre-upgrade snapshot after migration and sign-in verification. A comparison against the earlier leadership backup identified only an existing user's `updated_at` difference; password/authenticator values and other account fields matched. The fresh backup is the baseline for the completed upgrade.
 
-## 5. Permissions seeded by the pending migration
+## 5. Permissions seeded by the migration
 
 Sixteen new, explicit administration permissions:
 
@@ -92,7 +92,7 @@ The established `ADMINISTRATOR` role receives the new administration grants once
 | `WELFARE_OFFICER` | Existing Welfare workspace grant only |
 | Existing `GENERAL_OVERSEER` | Reused for attendance report viewing; no duplicate REPORT_VIEWER role created |
 
-If the equivalent ministry/report role is absent, its baseline role is created. Existing role IDs, active states and grants are authoritative. The standard existing three-role catalogue becomes ten roles after the pending migration; no sample accounts are created.
+If the equivalent ministry/report role is absent, its baseline role is created. Existing role IDs, active states and grants are authoritative. The standard existing three-role catalogue becomes ten roles after the migration; no sample accounts are created.
 
 ## 7. Authorization architecture
 
@@ -171,11 +171,11 @@ From `D:\HOPFAN`:
 .venv\Scripts\python.exe -m unittest tests.test_ui_administration tests.test_ui_smoke tests.test_ui_refinement tests.test_ui_ministry tests.test_ui_leadership -v
 ```
 
-After explicit approval, apply the pending local migration and verify the existing records:
+The local repair used these migration and preservation checks, followed by rollback-only verification of seeded-admin sign-in. To launch the updated application, use the final command:
 
 ```powershell
-.venv\Scripts\python.exe -m alembic upgrade head
-.venv\Scripts\python.exe -m scripts.upgrade_guard verify backups/before_user_administration_20261005T193819Z_snapshot.json
+.venv\Scripts\python.exe -m alembic upgrade a91c73d5f204
+.venv\Scripts\python.exe -m scripts.upgrade_guard verify backups/before_user_administration_20261005T204108Z_snapshot.json
 .venv\Scripts\python.exe -m alembic check
 .venv\Scripts\python.exe hopfan.py
 ```
@@ -188,9 +188,9 @@ Optional repeatable baseline seeding, after the schema upgrade:
 
 A fresh backup can be made with `.venv\Scripts\python.exe -m scripts.upgrade_guard backup`. Set `PG_BIN` to the installed PostgreSQL binary directory if PostgreSQL 18 is not installed in its standard path.
 
-## 15. Outstanding approval and decisions
+## 15. Deployment status and remaining modules
 
-The only deployment blocker is explicit approval to apply the reviewed local migration. Until then, the local database remains at the preceding revision and the new code should be started only after its schema upgrade. A verified backup is ready, and the private forward-migration test passes.
+The local migration is applied and Alembic reports **No new upgrade operations detected**. Seeded-admin sign-in succeeds with the existing credentials. Close and reopen any running application before trying again. The previous approval blocker was resolved during the sign-in repair.
 
 Existing global `MEMBERS_EDIT` is retained; a separate own-ministry member editing/membership-management workflow is not introduced under an unused permission. SMS sending, confidential financial records, welfare case notes, counselling, Settings and a Backup administration screen remain their separate future modules. Their business rules and approval policy require their own implementation; no fake operational flows were added here.
 
