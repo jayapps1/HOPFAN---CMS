@@ -71,21 +71,21 @@ class ActionButton(ctk.CTkButton):
 
 
 class StatCard(AppCard):
-    def __init__(self, master, title, subtitle="", icon_name=None):
+    def __init__(self, master, title, subtitle="", icon_name=None, compact=False):
         super().__init__(master)
         header = ctk.CTkFrame(self, fg_color="transparent")
-        header.pack(fill="x", padx=14, pady=(10, 0))
+        header.pack(fill="x", padx=14, pady=(6 if compact else 10, 0))
         label(header, title, size=12, muted=True).pack(side="left")
         if icon_name:
             from src.ui.icons import icon
             ctk.CTkLabel(header, text="", image=icon(icon_name, 20)).pack(side="right")
-        self.value = label(self, "0", size=24, bold=True)
+        self.value = label(self, "0", size=20 if compact else 24, bold=True)
         self.value.pack(anchor="w", padx=14, pady=(0, 6))
         self.detail = label(self, subtitle, size=11, muted=True, anchor="w", justify="left", wraplength=210)
         if subtitle:
             self.detail.pack(fill="x", padx=14, pady=(0, 12))
         else:
-            self.value.pack_configure(pady=(0, 10))
+            self.value.pack_configure(pady=(0, 6 if compact else 10))
 
     def set(self, value):
         self.value.configure(text=str(value))

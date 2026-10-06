@@ -1,21 +1,12 @@
 import os
-from pathlib import Path
-
-from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL
 from sqlalchemy.orm import sessionmaker
 
 
-# ---------------------------------------------------------
-# HOPFAN project root:
-# D:\HOPFAN
-# ---------------------------------------------------------
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-ENV_FILE = PROJECT_ROOT / ".env"
+from src.config.environment import ENV_FILE, PROJECT_ROOT, load_environment
 
-# Explicitly load THIS project's .env
-load_dotenv(dotenv_path=ENV_FILE, override=True)
+load_environment()
 
 
 DB_HOST = os.getenv("DB_HOST")

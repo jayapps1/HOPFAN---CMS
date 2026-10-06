@@ -12,7 +12,7 @@ from src.ui.members.member_form_dialog import MemberFormDialog
 class MembersView(ctk.CTkFrame):
     PAGE_SIZE = 40
 
-    def __init__(self, master, user, service=None, permissions=(), action_master=None):
+    def __init__(self, master, user, service=None, permissions=(), action_master=None, on_households=None):
         super().__init__(master, fg_color=theme.BACKGROUND, corner_radius=0)
         self.service = service or MemberService(user.id)
         self.permissions = set(permissions)
@@ -21,6 +21,7 @@ class MembersView(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(3, weight=1)
         self.add_button = None
+        self.households_button = None
         if action_master is None:
             header = PageHeader(self, 'Members', 'Find and view members in your assigned directory.')
             header.grid(row=0, column=0, sticky='ew', padx=22, pady=16)
@@ -28,6 +29,9 @@ class MembersView(ctk.CTkFrame):
         if 'MEMBERS_CREATE' in self.permissions:
             self.add_button = ActionButton(action_master, 'Add member', self.add_member, 'primary')
             self.add_button.pack(side='left')
+        if on_households and self.permissions.intersection({'HOUSEHOLD_VIEW','HOUSEHOLD_VIEW_ALL'}):
+            self.households_button = ActionButton(action_master, 'Households', on_households, width=120)
+            self.households_button.pack(side='left', padx=8)
         bar = ctk.CTkFrame(self, fg_color='transparent')
         bar.grid(row=1, column=0, sticky='ew', padx=22, pady=(0, 12))
         self.cards = {}
@@ -113,13 +117,16 @@ class MembersView(ctk.CTkFrame):
         self.loader.close()
         if self.add_button and self.add_button.winfo_exists():
             self.add_button.destroy()
+        if self.households_button and self.households_button.winfo_exists():
+            self.households_button.destroy()
         super().destroy()
 
 
 class MemberProfileDialog(FixedFooterDialog):
-    def __init__(self, master, service, member_id, on_saved, can_edit=False):
+    def __init__(self, master, service, member_id, on_saved, can_edit=False, household_service=None):
         super().__init__(master, 'Member profile', 'Membership, contact information and ministry participation.', width=800, height=660)
         self.service, self.member_id, self.on_saved = service, member_id, on_saved
+        self.household_service = household_service
         self.loader = AsyncLoader(self)
         self.member = None
         self.cancel_button.configure(text='Close')
@@ -150,6 +157,27 @@ class MemberProfileDialog(FixedFooterDialog):
             row.grid_columnconfigure(1, weight=1)
             label(row, title, 12, muted=True, width=150, anchor='w').grid(row=0,column=0,padx=12,pady=10)
             label(row, value or '—', 13, anchor='w', wraplength=430, justify='left').grid(row=0,column=1,sticky='ew',padx=12,pady=10)
+        if 'household' in member:
+            label(self.content, 'Household / Family', 17, True).pack(anchor='w', padx=16, pady=(20,8))
+            household = member['household']
+            if household:
+                family = AppCard(self.content); family.pack(fill='x', padx=16, pady=6)
+                label(family, household['household_name'], 16, True).pack(anchor='w', padx=14, pady=(12,4))
+                label(family, household['relationship_label']+' · Head: '+(household['head_name'] or 'Not assigned'), 12,
+                    wraplength=580, anchor='w', justify='left').pack(fill='x', padx=14)
+                label(family, f"{household['member_count']} current family members", 12, muted=True).pack(anchor='w', padx=14, pady=4)
+                self.household_button = ActionButton(family, 'View household', self.view_household, width=140)
+                self.household_button.pack(anchor='w', padx=14, pady=(4,12))
+            else:
+                label(self.content, 'No current household.', 12, muted=True).pack(anchor='w', padx=16, pady=8)
+        if member.get('sunday_school'):
+            school=member['sunday_school']
+            label(self.content,'Sunday School',17,True).pack(anchor='w',padx=16,pady=(20,8))
+            if school.get('student'):
+                label(self.content,(school.get('class_name') or 'No current class')+' · '+(display_date(school.get('start_date')) or 'Admission only'),13,True).pack(anchor='w',padx=16,pady=4)
+                if school.get('attendance_rate') is not None:label(self.content,f"Attendance rate: {school['attendance_rate']}%",12,muted=True).pack(anchor='w',padx=16)
+                if school.get('class_teachers'):label(self.content,'Teachers: '+', '.join(school['class_teachers']),12,wraplength=600).pack(anchor='w',padx=16,pady=4)
+            for teaching in school.get('teachers',[]):label(self.content,teaching['class_name']+' · '+teaching['role_label'],12).pack(anchor='w',padx=16,pady=4)
         label(self.content, 'Leadership / Positions', 17, True).pack(anchor='w', padx=16, pady=(20, 8))
         leadership = member.get('leadership', [])
         if not leadership:
@@ -166,6 +194,12 @@ class MemberProfileDialog(FixedFooterDialog):
     def edit_member(self):
         if self.member:
             MemberFormDialog(self, self.service, self.after_edit, member=self.member)
+
+    def view_household(self):
+        from src.services.household_service import HouseholdService
+        from src.ui.households.households_view import HouseholdProfileDialog
+        service = self.household_service or HouseholdService(self.service.user_id, self.service.session_factory)
+        return HouseholdProfileDialog(self, service, self.service, self.member['household']['id'], self.after_edit)
 
     def after_edit(self):
         self.on_saved()

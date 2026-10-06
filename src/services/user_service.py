@@ -2,9 +2,9 @@
 from datetime import datetime, timezone
 import re
 from argon2 import PasswordHasher
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, literal, false
 from sqlalchemy.orm import selectinload
-from src.models import User, UserStatus, Role, Ministry, Member, MemberMinistry, UserMinistryScope
+from src.models import User, UserStatus, Role, Ministry, Member, MemberMinistry, UserMinistryScope, Permission, SundaySchoolClass, SundaySchoolUserClassScope
 from src.models.associations import user_roles
 from src.services.administration_base import AdministrationService, AdministrationError, identifier, page_bounds, search_pattern, audit
 from src.services.auth_service import AuthService, PasswordRecoveryError
@@ -49,6 +49,53 @@ class UserService(AdministrationService):
                     'correct':'can_correct_attendance','close':'can_close_attendance','reports':'can_view_reports'}.items()} if scope.legacy_attendance_limits else None))
         return result
 
+    @staticmethod
+    def _school_ready(db):
+        return db.scalar(select(Permission.id).where(Permission.code=='SUNDAY_SCHOOL_CLASS_VIEW')) is not None
+
+    @classmethod
+    def _school_scopes(cls,db,ids):
+        result={uid:[] for uid in ids}
+        if not ids or not cls._school_ready(db): return result
+        stmt=select(SundaySchoolUserClassScope,SundaySchoolClass).join(SundaySchoolClass).where(
+            SundaySchoolUserClassScope.user_id.in_(ids),SundaySchoolUserClassScope.is_active.is_(True)).order_by(SundaySchoolClass.name)
+        for scope,school_class in db.execute(stmt):
+            result[scope.user_id].append(dict(id=str(school_class.id),name=school_class.name,is_active=school_class.status=='ACTIVE'))
+        return result
+
+    @staticmethod
+    def _set_school_scopes(db,access,user,class_ids):
+        access.require_permission('USER_SCOPE_MANAGE')
+        ids=set(identifier(cid) for cid in class_ids)
+        existing=db.scalars(select(SundaySchoolUserClassScope).where(SundaySchoolUserClassScope.user_id==user.id)).all()
+        retained={row.class_id for row in existing if row.is_active}
+        rows=db.scalars(select(SundaySchoolClass).where(SundaySchoolClass.id.in_(ids))).all()
+        if {row.id for row in rows}!=ids or any(row.status!='ACTIVE' and row.id not in retained for row in rows):
+            raise AdministrationError('Select active Sunday School classes or retain existing historical scopes.')
+        found={row.class_id:row for row in existing}
+        for row in existing: row.is_active=row.class_id in ids
+        for cid in ids-set(found): db.add(SundaySchoolUserClassScope(user_id=user.id,class_id=cid,created_by_user_id=access.user_id))
+
+    @staticmethod
+    def _directory_locations(db,ids,school_ready):
+        ministries={uid:[] for uid in ids};schools={uid:[] for uid in ids}
+        if not ids:return ministries,schools
+        flags=('can_view_attendance','can_create_attendance','can_record_attendance','can_correct_attendance','can_close_attendance','can_view_reports')
+        stmt=select(UserMinistryScope.user_id,Ministry.id,Ministry.name,Ministry.is_active,
+            UserMinistryScope.legacy_attendance_limits,*(getattr(UserMinistryScope,key) for key in flags),literal('ministry')).join(Ministry).where(UserMinistryScope.user_id.in_(ids),UserMinistryScope.is_active.is_(True))
+        if school_ready:
+            stmt=stmt.union_all(select(SundaySchoolUserClassScope.user_id,SundaySchoolClass.id,SundaySchoolClass.name,
+                SundaySchoolClass.status=='ACTIVE',false(),*(false() for _key in flags),literal('school')).join(SundaySchoolClass)
+                .where(SundaySchoolUserClassScope.user_id.in_(ids),SundaySchoolUserClassScope.is_active.is_(True)))
+        for row in db.execute(stmt):
+            uid,cid,name,active,legacy,*rest=row
+            if rest[-1]=='school':schools[uid].append(dict(id=str(cid),name=name,is_active=active))
+            else:ministries[uid].append(dict(id=str(cid),name=name,is_active=active,legacy_attendance_limits=legacy,
+                legacy_limits=dict(zip(('view','create','record','correct','close','reports'),rest[:-1]))))
+        for mapping in (ministries,schools):
+            for rows in mapping.values():rows.sort(key=lambda row:row['name'].casefold())
+        return ministries,schools
+
     def list_users(self, search='', status='ALL', role_id=None, ministry_id=None, limit=25, offset=0):
         with self._db('USER_VIEW') as (db, access):
             stmt = select(User).outerjoin(Member, Member.id == User.member_id)
@@ -68,12 +115,13 @@ class UserService(AdministrationService):
             if ministry_id:
                 stmt = stmt.where(select(UserMinistryScope.id).where(UserMinistryScope.user_id == User.id,
                     UserMinistryScope.ministry_id == identifier(ministry_id), UserMinistryScope.is_active.is_(True)).exists())
-            total = db.scalar(select(func.count()).select_from(stmt.subquery()))
+            ready=select(Permission.id).where(Permission.code=='SUNDAY_SCHOOL_CLASS_VIEW').exists()
+            total,school_ready = db.execute(select(func.count(),ready).select_from(stmt.subquery())).one()
             limit, offset = page_bounds(limit, offset)
             users = db.scalars(stmt.options(selectinload(User.member), selectinload(User.roles).selectinload(Role.permissions))
                 .order_by(func.lower(User.username), User.id).limit(limit).offset(offset)).all()
-            scopes = self._scopes(db, [u.id for u in users])
-            return dict(total=total, rows=[self._dto(u, scopes[u.id]) for u in users])
+            scopes,school_scopes=self._directory_locations(db,[u.id for u in users],school_ready)
+            return dict(total=total, rows=[dict(self._dto(u, scopes[u.id]),school_scopes=school_scopes[u.id]) for u in users])
 
     def stats(self):
         with self._db('USER_VIEW') as (db, access):
@@ -86,7 +134,7 @@ class UserService(AdministrationService):
     def get_user(self, user_id):
         with self._db('USER_VIEW') as (db, access):
             user = self._user(db, user_id)
-            return self._dto(user, self._scopes(db, [user.id])[user.id])
+            return dict(self._dto(user, self._scopes(db, [user.id])[user.id]),school_scopes=self._school_scopes(db,[user.id])[user.id])
 
     def access_options(self, user_id=None):
         with self.session_factory() as db:
@@ -100,10 +148,15 @@ class UserService(AdministrationService):
             if user_id:
                 retained = set(db.scalars(select(UserMinistryScope.ministry_id).where(
                     UserMinistryScope.user_id == identifier(user_id), UserMinistryScope.is_active.is_(True))))
-            return dict(roles=[dict(id=str(r.id),name=r.name+(' (inactive)' if not r.is_active else ''),
+            options=dict(roles=[dict(id=str(r.id),name=r.name+(' (inactive)' if not r.is_active else ''),
                 is_active=r.is_active, assignable=self._can_delegate(access,r)) for r in roles],
                 ministries=[dict(id=str(m.id),name=m.name+(' (inactive / archived)' if not m.is_active else ''),is_active=m.is_active)
                     for m in ministries if m.is_active or m.id in retained or (not user_id and access.has('USER_VIEW'))])
+            if self._school_ready(db):
+                retained_school={identifier(scope['id']) for scope in self._school_scopes(db,[identifier(user_id)]).get(identifier(user_id),[])} if user_id else set()
+                options['school_classes']=[dict(id=str(row.id),name=row.name+(' (inactive)' if row.status!='ACTIVE' else ''),is_active=row.status=='ACTIVE')
+                    for row in db.scalars(select(SundaySchoolClass).order_by(SundaySchoolClass.name)) if row.status=='ACTIVE' or row.id in retained_school]
+            return options
 
     def search_members(self, search='', limit=15, offset=0):
         with self.session_factory() as db:
@@ -229,7 +282,7 @@ class UserService(AdministrationService):
             audit(db,access.user_id,'USER_PROFILE_EDITED',user_id=user.id,old=old,new=self._account_snapshot(user))
             db.commit()
 
-    def update_access(self,user_id,*,role_ids=None,ministry_ids=None,normalize_existing=False,expected_updated_at=None):
+    def update_access(self,user_id,*,role_ids=None,ministry_ids=None,class_ids=None,normalize_existing=False,expected_updated_at=None):
         if type(normalize_existing) is not bool:
             raise AdministrationError('Choose whether to replace legacy attendance limits.')
         permission='ROLE_ASSIGN' if role_ids is not None else 'USER_SCOPE_MANAGE'
@@ -238,16 +291,20 @@ class UserService(AdministrationService):
             self._version(user,expected_updated_at)
             scopes=db.scalars(select(UserMinistryScope).where(UserMinistryScope.user_id==user.id)).all()
             old=dict(role_ids=sorted(str(r.id) for r in user.roles),scopes=self._scope_snapshot(scopes))
+            if class_ids is not None: old['school_class_ids']=[scope['id'] for scope in self._school_scopes(db,[user.id])[user.id]]
             if role_ids is not None:
                 self._set_roles(db,access,user,role_ids)
             if ministry_ids is not None:
                 self._set_scopes(db,access,user,ministry_ids,normalize_existing)
+            if class_ids is not None: self._set_school_scopes(db,access,user,class_ids)
             user.updated_at=datetime.now(timezone.utc)
             user.auth_revision+=1
             self._protect_recovery(db)
             scopes=db.scalars(select(UserMinistryScope).where(UserMinistryScope.user_id==user.id)).all()
-            audit(db,access.user_id,'USER_ACCESS_CHANGED',user_id=user.id,old=old,
-                new=dict(role_ids=sorted(str(r.id) for r in user.roles),scopes=self._scope_snapshot(scopes)))
+            new=dict(role_ids=sorted(str(r.id) for r in user.roles),scopes=self._scope_snapshot(scopes))
+            if class_ids is not None:
+                db.flush(); new['school_class_ids']=[scope['id'] for scope in self._school_scopes(db,[user.id])[user.id]]
+            audit(db,access.user_id,'USER_ACCESS_CHANGED',user_id=user.id,old=old,new=new)
             db.commit()
 
     def set_status(self,user_id,status):

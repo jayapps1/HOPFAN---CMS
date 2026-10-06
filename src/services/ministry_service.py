@@ -99,12 +99,15 @@ class MinistryService:
             created_at=ministry.created_at,updated_at=ministry.updated_at,archived_at=ministry.archived_at,
             member_count=members,active_member_count=active_members,in_use=bool(in_use))
 
-    def list_ministries(self,search='',status='ALL',category='ALL',limit=25,offset=0):
+    def list_ministries(self,search='',status='ALL',category='ALL',limit=25,offset=0,*,ministry_id=None):
         with self._db() as (db,access):
             counts = self._counts()
             stmt = self._visible(db,access,select(Ministry,
                 func.coalesce(counts.c.members,0),func.coalesce(counts.c.active_members,0),self._known_dependencies())
                 .outerjoin(counts,counts.c.ministry_id==Ministry.id))
+            if ministry_id is not None:
+                selected=self._get(db,access,ministry_id)
+                stmt=stmt.where(Ministry.id==selected.id)
             if search.strip():
                 pattern = '%'+search.strip().replace('\\','\\\\').replace('%','\\%').replace('_','\\_')+'%'
                 stmt = stmt.where(or_(Ministry.name.ilike(pattern,escape='\\'),Ministry.code.ilike(pattern,escape='\\')))
@@ -121,11 +124,14 @@ class MinistryService:
                 .limit(min(100,max(1,limit))).offset(max(0,offset)))
             return dict(total=total,rows=[self._dto(*row) for row in rows])
 
-    def get_ministry_stats(self):
+    def get_ministry_stats(self, ministry_id=None):
         with self._db() as (db,access):
             lifecycle = self._status_expression()
-            rows = db.execute(self._visible(db,access,select(lifecycle,func.count(Ministry.id)))
-                .group_by(lifecycle)).all()
+            stmt = self._visible(db,access,select(lifecycle,func.count(Ministry.id)))
+            if ministry_id is not None:
+                ministry = self._get(db,access,ministry_id)
+                stmt = stmt.where(Ministry.id == ministry.id)
+            rows = db.execute(stmt.group_by(lifecycle)).all()
             result = dict(total=0,active=0,inactive=0,archived=0)
             for status,count in rows:
                 result[status.lower()]=count
@@ -168,13 +174,13 @@ class MinistryService:
                 dependencies.append(table)
         return sorted(set(dependencies))
 
-    def get_ministry(self,ministry_id):
+    def get_ministry(self,ministry_id,*,include_dependencies=True):
         with self._db() as (db,access):
             row=self._get(db,access,ministry_id)
             counts=self._counts()
             total,active=db.execute(select(func.coalesce(counts.c.members,0),func.coalesce(counts.c.active_members,0))
                 .select_from(Ministry).outerjoin(counts,counts.c.ministry_id==Ministry.id).where(Ministry.id==row.id)).one()
-            dependencies=self._dependencies(db,row.id)
+            dependencies=self._dependencies(db,row.id) if include_dependencies else []
             return dict(self._dto(row,total,active,bool(dependencies)),dependencies=dependencies)
 
     @staticmethod

@@ -46,6 +46,9 @@ class AdministrationMigrationTests(unittest.TestCase):
                 self.assertEqual(connection.scalar(text("SELECT count(*) FROM roles WHERE code='MINISTRY_LEADER'")),0)
                 self.assertEqual(connection.scalar(text("SELECT count(*) FROM roles WHERE code='REPORT_VIEWER'")),0)
                 self.assertEqual(connection.scalar(text('SELECT version_num FROM alembic_version')),'a91c73d5f204')
+                # Metadata describes the latest application, while the
+                # preservation assertions above remain pinned to this upgrade.
+                command.upgrade(config,'head')
                 command.check(config)
             finally:
                 transaction.rollback()

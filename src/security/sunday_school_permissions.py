@@ -1,0 +1,40 @@
+"""Sunday School capabilities intersect explicit account class scopes."""
+PERMISSIONS = {
+    'SUNDAY_SCHOOL_VIEW': 'View Sunday School workspace',
+    'SUNDAY_SCHOOL_VIEW_ALL': 'Access all Sunday School classes',
+    'SUNDAY_SCHOOL_CLASS_VIEW': 'View permitted classes',
+    'SUNDAY_SCHOOL_CLASS_CREATE': 'Configure Sunday School classes',
+    'SUNDAY_SCHOOL_CLASS_EDIT': 'Edit class configuration',
+    'SUNDAY_SCHOOL_CLASS_ARCHIVE': 'Deactivate and reactivate classes',
+    'SUNDAY_SCHOOL_CLASS_DELETE_UNUSED': 'Delete classes without history or dependencies',
+    'SUNDAY_SCHOOL_STUDENT_VIEW': 'View students in permitted classes',
+    'SUNDAY_SCHOOL_STUDENT_ENROLL': 'Register and enroll existing members',
+    'SUNDAY_SCHOOL_STUDENT_MOVE': 'Move students between permitted classes',
+    'SUNDAY_SCHOOL_STUDENT_END': 'End student enrollments',
+    'SUNDAY_SCHOOL_STUDENT_EDIT': 'Edit Sunday School admission status and notes',
+    'SUNDAY_SCHOOL_GUARDIAN_VIEW': 'View operational guardian contacts for permitted students',
+    'SUNDAY_SCHOOL_GUARDIAN_MANAGE': 'Configure guardian relationships and contact consent',
+    'SUNDAY_SCHOOL_TEACHER_VIEW': 'View teaching assignments',
+    'SUNDAY_SCHOOL_TEACHER_ASSIGN': 'Assign teachers to permitted classes',
+    'SUNDAY_SCHOOL_TEACHER_END': 'End teaching assignments',
+    'SUNDAY_SCHOOL_LESSON_VIEW': 'View permitted lesson plans',
+    'SUNDAY_SCHOOL_LESSON_CREATE': 'Create lesson plans',
+    'SUNDAY_SCHOOL_LESSON_EDIT': 'Edit and publish permitted lessons',
+    'SUNDAY_SCHOOL_ATTENDANCE_VIEW': 'View class attendance',
+    'SUNDAY_SCHOOL_ATTENDANCE_CREATE': 'Plan and open class attendance',
+    'SUNDAY_SCHOOL_ATTENDANCE_RECORD': 'Record class attendance',
+    'SUNDAY_SCHOOL_ATTENDANCE_CORRECT': 'Correct class attendance with a reason',
+    'SUNDAY_SCHOOL_ATTENDANCE_CLOSE': 'Close class attendance',
+    'SUNDAY_SCHOOL_ATTENDANCE_REOPEN': 'Reopen closed class attendance',
+    'SUNDAY_SCHOOL_REPORT_VIEW': 'View permitted Sunday School reports',
+    'SUNDAY_SCHOOL_REPORT_EXPORT': 'Export permitted Sunday School reports',
+}
+TEACHER_PERMISSIONS = {
+    'SUNDAY_SCHOOL_VIEW', 'SUNDAY_SCHOOL_CLASS_VIEW', 'SUNDAY_SCHOOL_STUDENT_VIEW',
+    'SUNDAY_SCHOOL_GUARDIAN_VIEW', 'SUNDAY_SCHOOL_TEACHER_VIEW', 'SUNDAY_SCHOOL_LESSON_VIEW',
+    'SUNDAY_SCHOOL_ATTENDANCE_VIEW', 'SUNDAY_SCHOOL_ATTENDANCE_CREATE',
+    'SUNDAY_SCHOOL_ATTENDANCE_RECORD', 'SUNDAY_SCHOOL_ATTENDANCE_CORRECT',
+    'SUNDAY_SCHOOL_ATTENDANCE_CLOSE', 'SUNDAY_SCHOOL_REPORT_VIEW',
+}
+TEACHER_ROLES = {'TEACHER': 'Teacher', 'ASSISTANT_TEACHER': 'Assistant teacher', 'CLASS_COORDINATOR': 'Class coordinator'}
+GUARDIAN_RELATIONSHIPS = {'PARENT': 'Parent', 'GUARDIAN': 'Guardian', 'FATHER': 'Father', 'MOTHER': 'Mother', 'RELATIVE': 'Relative', 'OTHER': 'Other'}

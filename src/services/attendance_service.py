@@ -17,11 +17,16 @@ from src.models import (
     Ministry, Role, User, UserMinistryScope, MinistryPosition, MinistryLeadershipAssignment,
 )
 from src.security.attendance_permissions import AttendancePermissionError, load_access
+from src.services.operation_errors import OperationConflict
 
 logger = logging.getLogger(__name__)
 
 
 class AttendanceServiceError(Exception):
+    pass
+
+
+class AttendanceConflict(AttendanceServiceError, OperationConflict):
     pass
 
 
@@ -102,7 +107,7 @@ class AttendanceService:
     def _get(self, db, access, session_id, lock=False):
         stmt = self._visible_sessions(access).where(AttendanceSession.id == as_uuid(session_id))
         if lock:
-            stmt = stmt.with_for_update()
+            stmt = stmt.with_for_update().execution_options(populate_existing=True)
         session = db.scalar(stmt)
         if session is None:
             raise AttendanceAuthorizationError("Attendance session is unavailable or outside your scope.")
@@ -142,6 +147,7 @@ class AttendanceService:
                 "end_time": session.end_time, "state": value_of(session.state),
                 "ministry_id": str(session.ministry_id) if session.ministry_id else None,
                 "ministry_name": ministry_name or "Whole church", "created_by": created_by or "Unknown",
+                "updated_at": session.updated_at,
                 "created_at": session.created_at, "created_by_user_id": str(session.created_by_user_id) if session.created_by_user_id else None}
 
     def list_ministries(self, action="view"):
@@ -358,7 +364,7 @@ class AttendanceService:
             self._member_query(access, session, ministry_id=ministry_id)
             return self._summaries(db, access, [session.id], ministry_id).get(session.id, self._empty_stats())
 
-    def roster(self, session_id, search="", ministry_id=None, status=None, limit=40, offset=0, report=False):
+    def roster(self, session_id, search="", ministry_id=None, status=None, limit=40, offset=0, report=False, *, member_id=None):
         with self._db() as (db, access):
             session = self._get(db, access, session_id)
             if report and not access.has("ATTENDANCE_EXPORT"):
@@ -371,6 +377,8 @@ class AttendanceService:
                 marker, marker.id == AttendanceRecord.marked_by_user_id).outerjoin(
                 updater, updater.id == AttendanceRecord.updated_by_user_id).where(Member.id.in_(allowed))
             stmt = self._search(stmt, search)
+            if member_id is not None:
+                stmt = stmt.where(Member.id == as_uuid(member_id))
             if status == "UNMARKED":
                 stmt = stmt.where(AttendanceRecord.id.is_(None))
             elif status and status != "ALL":
@@ -387,6 +395,7 @@ class AttendanceService:
             result = []
             for member, record, marked_by, updated_by in rows:
                 result.append(dict(id=str(member.id), member_no=member.member_no, full_name=member.full_name,
+                    record_id=str(record.id) if record else None,
                     phone=member.phone or "", photo_path=member.photo_path or "",
                     ministries=memberships.get(member.id, []), attendance_status=value_of(record.status) if record else None,
                     marked_by=marked_by or ("Legacy / unavailable" if record else ""), marked_at=record.marked_at if record else None,
@@ -412,17 +421,19 @@ class AttendanceService:
             member_id=record.member_id if record else None, old_status=old, new_status=new,
             reason=reason, changed_by_user_id=access.user_id, action_type=action))
 
-    def mark(self, session_id, member_id, status, *, reason=None, expected_status=None, notes=None):
+    def mark(self, session_id, member_id, status, *, reason=None, expected_status=None, notes=None,
+             expected_updated_at=None, ministry_id=None):
         status = self._enum(AttendanceStatus, status)
         member_uuid = as_uuid(member_id)
         with self._db() as (db, access):
             # Serializes marking/correction/closure, including concurrent first inserts.
             session = self._get(db, access, session_id, lock=True)
             record = db.scalar(select(AttendanceRecord).where(
-                AttendanceRecord.session_id == session.id, AttendanceRecord.member_id == member_uuid))
+                AttendanceRecord.session_id == session.id, AttendanceRecord.member_id == member_uuid)
+                .execution_options(populate_existing=True))
             action = "correct" if record else "record"
             self._require_action(access, session, action)
-            if not db.scalar(self._member_query(access, session, action).where(Member.id == member_uuid)):
+            if not db.scalar(self._member_query(access, session, action, ministry_id=ministry_id).where(Member.id == member_uuid)):
                 self._deny()
             if session.state in {AttendanceSessionState.DRAFT, AttendanceSessionState.LOCKED}:
                 raise AttendanceServiceError("Open the session before changing attendance.")
@@ -431,8 +442,10 @@ class AttendanceService:
                 raise AttendanceAuthorizationError("Closed sessions require explicit correction permission.")
             now = datetime.now(timezone.utc)
             if record:
+                if expected_updated_at is not None and record.updated_at != expected_updated_at:
+                    raise AttendanceConflict("This attendance record changed. Refresh before correcting.")
                 if expected_status != record.status.value:
-                    raise AttendanceServiceError("Attendance has already been marked or changed. Refresh before correcting it.")
+                    raise AttendanceConflict("Attendance has already been marked or changed. Refresh before correcting it.")
                 if record.status == status:
                     return
                 if not reason or not reason.strip():
@@ -444,7 +457,7 @@ class AttendanceService:
                 self._audit(db, access, session, "CORRECTED", record, old, status.value, reason.strip())
             else:
                 if expected_status is not None:
-                    raise AttendanceServiceError("This record has changed. Refresh the roster.")
+                    raise AttendanceConflict("This record has changed. Refresh the roster.")
                 record = AttendanceRecord(session_id=session.id, member_id=member_uuid,
                     status=status, marked_by_user_id=access.user_id, marked_at=now,
                     updated_at=now, notes=notes)
@@ -452,6 +465,20 @@ class AttendanceService:
                 db.flush()
                 self._audit(db, access, session, "CREATED", record, new=status.value)
             db.commit()
+
+    def correct_record(self, record_id, status, reason, expected_status, expected_updated_at, ministry_id=None):
+        with self._db() as (db, access):
+            record = db.get(AttendanceRecord, as_uuid(record_id))
+            if record is None:
+                self._deny()
+            session = self._get(db, access, record.session_id)
+            if not db.scalar(self._member_query(access, session, "correct", ministry_id=ministry_id)
+                             .where(Member.id == record.member_id)):
+                self._deny()
+            session_id, member_id = record.session_id, record.member_id
+        self.mark(session_id, member_id, status, reason=reason, expected_status=expected_status,
+                  expected_updated_at=expected_updated_at, ministry_id=ministry_id)
+        return session_id, member_id
 
     def _session_actions(self, access, session):
         central = access.has("ATTENDANCE_VIEW_ALL")
@@ -464,9 +491,11 @@ class AttendanceService:
             unlock=session.state == AttendanceSessionState.LOCKED and central and access.has("ATTENDANCE_REOPEN_SESSION") and access.has("ATTENDANCE_UNLOCK_SESSION"),
             lock=session.state == AttendanceSessionState.CLOSED and access.has("ATTENDANCE_LOCK_SESSION") and (central or own_correct))
 
-    def transition(self, session_id, action, *, reason=None):
+    def transition(self, session_id, action, *, reason=None, expected_updated_at=None):
         with self._db() as (db, access):
             session = self._get(db, access, session_id, lock=True)
+            if expected_updated_at is not None and session.updated_at != expected_updated_at:
+                raise AttendanceConflict("This attendance session changed. Refresh before continuing.")
             if not self._session_actions(access, session).get(action):
                 raise AttendanceAuthorizationError("This session transition is unavailable or unauthorized.")
             if action in {"reopen", "unlock", "lock"} and not (reason and reason.strip()):

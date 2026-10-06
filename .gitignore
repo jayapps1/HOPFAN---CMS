@@ -1,5 +1,6 @@
 .venv/
 __pycache__/
+.pytest_cache/
 *.pyc
 .env
 .env.*
@@ -10,4 +11,19 @@ backups/
 .vscode/
 *.bak
 assets/member_photos/
+assets/website_media/
 ui_preferences.json
+
+# Secure web portal.
+web/node_modules/
+web/.next/
+web/.next-e2e/
+web/.playwright/
+web/.npm-cache/
+web/coverage/
+web/playwright-report/
+web/test-results/
+web/*.tsbuildinfo
+web/*.log
+!.env.local.example
+!web/.env.local.example

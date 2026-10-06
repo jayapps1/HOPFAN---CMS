@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from contextlib import contextmanager
 from pathlib import Path
 import shutil
@@ -451,85 +451,58 @@ class MemberService:
     # LIST / SEARCH
     # ------------------------------------------------------
 
-    def list_members(
-        self,
-        search="",
-        status="ALL",
-        limit=50,
-        offset=0,
-    ):
+    @classmethod
+    def _directory_query(cls, access, search='', status='ALL', ministry_id=None):
+        """One visibility/filter definition shared by desktop, API and counts."""
+        stmt = cls._visible(access, select(Member))
+        if ministry_id:
+            mid = uuid.UUID(str(ministry_id))
+            if not access.has('MEMBERS_VIEW_ALL') and mid not in access.ministry_ids('MEMBERS_VIEW_OWN_MINISTRY'):
+                raise MemberAuthorizationError('This ministry is outside your permitted member directory.')
+            stmt = stmt.where(select(MemberMinistry.id).where(MemberMinistry.member_id == Member.id,
+                              MemberMinistry.ministry_id == mid, MemberMinistry.is_active.is_(True)).exists())
+        if search.strip():
+            pattern = '%'+search.strip().replace('\\','\\\\').replace('%','\\%').replace('_','\\_')+'%'
+            full_name = func.concat_ws(' ', Member.first_name, Member.middle_name, Member.last_name)
+            stmt = stmt.where(or_(*(column.ilike(pattern, escape='\\') for column in
+                                  (full_name, Member.member_no, Member.phone, Member.email))))
+        if status and status != 'ALL':
+            try: stmt = stmt.where(Member.status == MemberStatus(status))
+            except ValueError: raise MemberServiceError('Choose a valid member status.') from None
+        return stmt
+
+    @staticmethod
+    def _directory_order(stmt, sort='name', descending=False):
+        columns = {'name': (func.lower(Member.last_name), func.lower(Member.first_name)),
+                   'member_no': (Member.member_no,), 'joined_date': (Member.date_joined,),
+                   'created_date': (Member.created_at,)}
+        if sort not in columns: raise MemberServiceError('Choose a valid member sort order.')
+        return stmt.order_by(*(column.desc().nulls_last() if descending else column.asc().nulls_last()
+                               for column in columns[sort]), Member.id)
+
+    @staticmethod
+    def _directory_load(stmt):
+        return stmt.options(selectinload(Member.ministry_memberships).selectinload(MemberMinistry.ministry))
+
+    def list_members(self, search='', status='ALL', limit=50, offset=0, *, ministry_id=None, sort='name', descending=False):
         with self._db() as (db, access):
-            stmt = (
-                select(Member)
-                .options(
-                    selectinload(
-                        Member.ministry_memberships
-                    ).selectinload(
-                        MemberMinistry.ministry
-                    )
-                )
-            )
+            stmt = self._directory_load(self._directory_order(self._directory_query(access, search, status, ministry_id), sort, descending))
+            return [self._member_dict(member) for member in db.scalars(stmt.limit(min(max(limit, 1), 200)).offset(max(offset, 0))).unique()]
 
-            stmt = self._visible(access, stmt)
-            search = search.strip()
+    def list_members_page(self, search='', status='ALL', ministry_id=None, limit=25, offset=0, sort='name', descending=False):
+        with self._db() as (db, access):
+            stmt = self._directory_query(access, search, status, ministry_id)
+            total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+            stmt = self._directory_load(self._directory_order(stmt, sort, descending))
+            rows = db.scalars(stmt.limit(min(100, max(1, limit))).offset(max(0, offset))).unique()
+            return dict(total=total, rows=[self._member_dict(member) for member in rows])
 
-            if search:
-                pattern = (
-                    f"%{search}%"
-                )
-
-                stmt = stmt.where(
-                    or_(
-                        Member.member_no.ilike(
-                            pattern
-                        ),
-                        Member.first_name.ilike(
-                            pattern
-                        ),
-                        Member.middle_name.ilike(
-                            pattern
-                        ),
-                        Member.last_name.ilike(
-                            pattern
-                        ),
-                        Member.phone.ilike(
-                            pattern
-                        ),
-                        Member.email.ilike(
-                            pattern
-                        ),
-                    )
-                )
-
-            if (
-                status
-                and status != "ALL"
-            ):
-                try:
-                    stmt = stmt.where(
-                        Member.status
-                        == MemberStatus(
-                            status
-                        )
-                    )
-                except ValueError:
-                    pass
-
-            stmt = stmt.order_by(
-                Member.last_name.asc(),
-                Member.first_name.asc(),
-            )
-
-            members = db.scalars(
-                stmt.limit(min(max(limit, 1), 200)).offset(max(offset, 0))
-            ).unique().all()
-
-            return [
-                self._member_dict(
-                    member
-                )
-                for member in members
-            ]
+    def get_photo_path(self, member_id):
+        with self._db() as (db, access):
+            row = db.execute(self._visible(access, select(Member.id, Member.photo_path))
+                             .where(Member.id == uuid.UUID(str(member_id)))).first()
+            if row is None: raise MemberAuthorizationError('Member not found or outside your assigned scope.')
+            return row.photo_path
 
     # ------------------------------------------------------
     # GET ONE MEMBER
@@ -568,62 +541,33 @@ class MemberService:
                 result['leadership'] = MinistryLeadershipService.member_leadership(db, access, member.id)
             else:
                 result['leadership'] = []
+            if access.has_any({'HOUSEHOLD_VIEW', 'HOUSEHOLD_VIEW_ALL'}):
+                from src.services.household_service import HouseholdService
+                permitted, household = HouseholdService.member_household(db, access, member.id)
+                if permitted:
+                    result['household'] = household
+            if access.has_any({'SUNDAY_SCHOOL_STUDENT_VIEW','SUNDAY_SCHOOL_TEACHER_VIEW'}):
+                from src.services.sunday_school_service import SundaySchoolService
+                school=SundaySchoolService.member_summaries(db,access,[member.id]).get(member.id)
+                if school:result['sunday_school']=school
             return result
 
     # ------------------------------------------------------
     # STATISTICS
     # ------------------------------------------------------
 
-    def stats(self):
+    def stats(self, ministry_id=None, *, include_recent=False):
         with self._db() as (db, access):
-            total = db.scalar(
-                self._visible(access, select(
-                    func.count(
-                        Member.id
-                    )
-                ))
-            ) or 0
-
-            active = db.scalar(
-                self._visible(access, select(
-                    func.count(
-                        Member.id
-                    )
-                )).where(
-                    Member.status
-                    == MemberStatus.ACTIVE
-                )
-            ) or 0
-
-            inactive = db.scalar(
-                self._visible(access, select(
-                    func.count(
-                        Member.id
-                    )
-                )).where(
-                    Member.status
-                    == MemberStatus.INACTIVE
-                )
-            ) or 0
-
-            baptized = db.scalar(
-                self._visible(access, select(
-                    func.count(
-                        Member.id
-                    )
-                )).where(
-                    Member.baptized.is_(
-                        True
-                    )
-                )
-            ) or 0
-
-            return {
-                "total": total,
-                "active": active,
-                "inactive": inactive,
-                "baptized": baptized,
-            }
+            filtered = self._directory_query(access, ministry_id=ministry_id).subquery()
+            total,active,inactive,baptized,recent = db.execute(select(func.count(),
+                func.count().filter(filtered.c.status == MemberStatus.ACTIVE),
+                func.count().filter(filtered.c.status == MemberStatus.INACTIVE),
+                func.count().filter(filtered.c.baptized.is_(True)),
+                func.count().filter(filtered.c.created_at >= datetime.now(timezone.utc)-timedelta(days=30)))
+                .select_from(filtered)).one()
+            result = dict(total=total, active=active, inactive=inactive, baptized=baptized)
+            if include_recent: result['recent'] = recent
+            return result
 
     # ------------------------------------------------------
     # MINISTRIES
@@ -672,6 +616,8 @@ class MemberService:
         self,
         data,
         ministry_ids=None,
+        *,
+        commit=True,
     ):
         ministry_ids = (
             ministry_ids
@@ -719,7 +665,8 @@ class MemberService:
                     )
                 )
 
-            db.commit()
+            if commit:db.commit()
+            else:db.flush()
 
             member_id = member.id
 

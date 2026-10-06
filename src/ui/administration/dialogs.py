@@ -187,12 +187,16 @@ class UserAccessDialog(AdminDialog):
         self.service,self.user,self.on_saved,self.permissions=service,user,on_saved,set(permissions)
         self.role_ids=[r['id'] for r in user['roles']]
         self.scope_ids=[s['id'] for s in user['scopes']]
+        self.school_scope_ids=[scope['id'] for scope in user.get('school_scopes',[])]
         heading(self.content,'Software roles')
         self.roles=MultiSelectDropdown(self.content,selected_ids=self.role_ids,placeholder='Select roles',search_label='roles')
         self.roles.pack(fill='x',padx=16)
         heading(self.content,'Ministry scopes')
         self.scopes=MultiSelectDropdown(self.content,selected_ids=self.scope_ids)
         self.scopes.pack(fill='x',padx=16)
+        self.school_label=label(self.content,'Sunday School class scopes',12,True,anchor='w')
+        self.school_scopes=MultiSelectDropdown(self.content,selected_ids=self.school_scope_ids,placeholder='Select Sunday School classes',search_label='classes')
+        self.school_options_ready=False
         details(self.content,'Roles give capabilities. Scopes determine where own-ministry capabilities apply. Global permissions remain church-wide even when scopes are selected.')
         details(self.content,'Revoking a role or scope preserves church positions, participation and historical records.')
         self.normalize=ctk.BooleanVar(master=self,value=False)
@@ -208,6 +212,12 @@ class UserAccessDialog(AdminDialog):
     def options_ready(self,options):
         self.roles.set_options([r for r in options['roles'] if r['assignable'] or r['id'] in self.role_ids])
         self.scopes.set_options(options['ministries'])
+        if 'school_classes' in options:
+            self.school_options_ready=True
+            self.school_label.pack(fill='x',padx=16,pady=(14,5))
+            self.school_scopes.pack(fill='x',padx=16,pady=(0,14))
+            self.school_scopes.set_options(options['school_classes'])
+            if 'USER_SCOPE_MANAGE' not in self.permissions: self.school_scopes.configure(state='disabled')
         if 'ROLE_ASSIGN' not in self.permissions: self.roles.configure(state='disabled')
         if 'USER_SCOPE_MANAGE' not in self.permissions: self.scopes.configure(state='disabled')
         self.save_button.configure(state='normal')
@@ -216,6 +226,7 @@ class UserAccessDialog(AdminDialog):
         params=dict(expected_updated_at=self.user['updated_at'])
         if 'ROLE_ASSIGN' in self.permissions: params['role_ids']=self.roles.get_selected_ids()
         if 'USER_SCOPE_MANAGE' in self.permissions: params.update(ministry_ids=self.scopes.get_selected_ids(),normalize_existing=self.normalize.get())
+        if 'USER_SCOPE_MANAGE' in self.permissions and self.school_options_ready: params['class_ids']=self.school_scopes.get_selected_ids()
         operation=lambda:self.service.update_access(self.user['id'],**params)
         def saved(_):
             self.on_saved(None); self.destroy()
@@ -279,6 +290,9 @@ class UserProfileDialog(AdminDialog):
         details(self.content,'\n'.join(scope_lines) or 'No ministry scopes. Global permissions do not require scopes.')
         details(self.content,'Global permissions apply church-wide; own-ministry permissions apply within the listed active scopes.')
         heading(self.content,'Authenticator and security')
+        if user.get('school_scopes'):
+            heading(self.content,'Sunday School class scopes')
+            details(self.content,'\n'.join(scope['name'] for scope in user['school_scopes']))
         details(self.content,f"Authenticator: {'Enabled' if user['totp_enabled'] else 'Not configured'}\nFailed login attempts: {user['failed_login_attempts']}\nLocked until: {timestamp(user['locked_until'])}\nPassword change required: {'Yes' if user['require_password_change'] else 'No'}")
         actions=ctk.CTkFrame(self.content,fg_color='transparent')
         actions.pack(fill='x',padx=12,pady=10)

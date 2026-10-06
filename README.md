@@ -23,3 +23,16 @@ The General Overseer role is seeded with attendance viewing and reporting permis
 See [the implementation and validation report](docs/attendance_upgrade_report.md) for schema changes, permissions, policy defaults and verification evidence.
 
 Credentials, member photos, local preferences, backups, logs and virtual environments remain local and are excluded from Git.
+
+
+## Online website and secure portal
+
+From `web/`, run `npm.cmd run dev` to start the missing local API and the frontend together. The launcher preserves an already-running HOPFAN frontend.
+
+- Public website: http://localhost:3000/
+- Staff login: http://localhost:3000/login
+- API health: http://localhost:8000/api/v1/health
+
+Use a verified database backup before `.venv\Scripts\python.exe -m alembic upgrade head` on an existing installation. Current head is `e3acdfa4cbf6`. No live public content is seeded automatically; enter approved information through the CMS.
+
+Reports: [Phase 5](docs/online_operations_report.md), [Phase 6](docs/web_stabilization_cms_report.md), [Phase 7](docs/public_website_report.md).

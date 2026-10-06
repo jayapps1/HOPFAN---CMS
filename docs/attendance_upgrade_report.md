@@ -1,5 +1,9 @@
 # HOPFAN attendance and application correction report
 
+Sunday School classes, students, lessons and separate class attendance are documented in the [Sunday School report](sunday_school_report.md).
+
+Household and family management, migration, privacy rules and verification are documented in the [Household Management report](household_management_report.md).
+
 Updated 5 October 2026. This report supersedes the earlier attendance-only report and follows the latest pasted attendance and full UI requirements.
 
 The subsequent member form, dropdown and login refinements are documented in [UI refinement report](ui_refinement_report.md), including the current 36-check verification and screenshots.

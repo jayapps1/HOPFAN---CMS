@@ -4,6 +4,7 @@ from src.services.member_service import MemberService
 from src.services.attendance_service import AttendanceService
 from src.services.ministry_service import MinistryService
 from src.services.user_service import UserService
+from src.services.household_service import HouseholdService
 from src.ui.components.async_loader import AsyncLoader
 from src.security.application_permissions import navigation
 from src.ui import theme
@@ -24,8 +25,10 @@ class DashboardView(ctk.CTkFrame):
         self.member_service = MemberService(user.id)
         self.attendance_service = AttendanceService(user.id)
         self.ministry_service = MinistryService(user.id)
+        self.household_service = HouseholdService(user.id)
         self.attendance_capabilities = self.attendance_service.capabilities()
         self.permissions = set(self.attendance_capabilities['permissions'])
+        self.can_member_directory = 'MEMBERS_VIEW_ALL' in self.permissions or ('MEMBERS_VIEW_OWN_MINISTRY' in self.permissions and bool(self.attendance_capabilities.get('scope_ids')))
         destinations = navigation(self.attendance_capabilities)
         self.allowed_pages = dict(destinations)
         self.ministries = self.attendance_service.list_ministries() if self.attendance_capabilities['can_view'] else []
@@ -55,7 +58,7 @@ class DashboardView(ctk.CTkFrame):
         view.pack(fill='both', expand=True)
 
     def show_dashboard(self):
-        operational=any(page in self.allowed_pages for page in ('Members','Attendance','Ministries'))
+        operational=self.can_member_directory or any(page in self.allowed_pages for page in ('Attendance','Ministries'))
         self.page('Dashboard' if self.central or not operational else 'Ministry dashboard', self.context)
         if not operational:
             view=ctk.CTkFrame(self.shell.content,fg_color='transparent')
@@ -82,14 +85,23 @@ class DashboardView(ctk.CTkFrame):
             self.attendance_metric=None
             return
         view = HomeView(self.shell.content, self.member_service, self.attendance_service,
-            self.attendance_capabilities, self.allowed_pages, self.select_menu, self.open_session)
+            self.attendance_capabilities, self.allowed_pages, self.select_menu, self.open_session,
+            member_directory=self.can_member_directory)
         self.attendance_metric = view.cards['sunday']
         self.mount(view)
 
     def show_members(self):
+        if not self.can_member_directory:
+            return self.show_households()
         self.page('Members' if self.central else 'Ministry members', self.context)
         self.mount(MembersView(self.shell.content, self.user, service=self.member_service,
-                               permissions=self.permissions, action_master=self.page_actions))
+                               permissions=self.permissions, action_master=self.page_actions, on_households=self.show_households))
+
+    def show_households(self):
+        from src.ui.households.households_view import HouseholdsView
+        self.page('Households', 'Manage HOPFAN families and household relationships')
+        self.mount(HouseholdsView(self.shell.content, self.household_service, self.member_service,
+            on_members=self.show_members if self.can_member_directory else None, action_master=self.page_actions))
 
     def show_attendance(self):
         self.page('Attendance' if self.central else 'Ministry attendance', self.context)
@@ -103,6 +115,11 @@ class DashboardView(ctk.CTkFrame):
     def show_ministries(self):
         self.page('Ministries','Manage HOPFAN ministries, fellowships and departments' if 'MINISTRIES_VIEW_ALL' in self.permissions else 'Your assigned ministry workspaces')
         self.mount(MinistriesView(self.shell.content,self.user,service=self.ministry_service,action_master=self.page_actions))
+
+    def show_sunday_school(self):
+        from src.ui.sunday_school.workspace import SundaySchoolWorkspace
+        self.page('Sunday School','Classes, students, lessons and class attendance')
+        self.mount(SundaySchoolWorkspace(self.shell.content,self.user,member_service=self.member_service))
 
     def show_future(self, name):
         self.page(name, self.context)
@@ -142,5 +159,6 @@ class DashboardView(ctk.CTkFrame):
         self.active_menu = name
         routes = {'Dashboard': self.show_dashboard, 'Members': self.show_members,
                   'Attendance': self.show_attendance, 'Ministries': self.show_ministries,
-                  'Reports': self.show_reports, 'Administration': self.show_administration}
+                  'Reports': self.show_reports, 'Administration': self.show_administration,
+                  'Sunday School':self.show_sunday_school}
         routes.get(name, lambda: self.show_future(name))()

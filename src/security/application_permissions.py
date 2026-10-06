@@ -1,4 +1,7 @@
 """Application navigation and member grants, independent of role titles."""
+from src.security.household_permissions import PERMISSIONS as HOUSEHOLD_PERMISSIONS
+from src.security.sunday_school_permissions import PERMISSIONS as SCHOOL_PERMISSIONS
+from src.security.content_permissions import PERMISSIONS as CONTENT_PERMISSIONS
 PERMISSIONS = {
     "MEMBERS_VIEW_ALL": "View the church member directory",
     "MEMBERS_VIEW_OWN_MINISTRY": "View members of assigned ministries",
@@ -31,6 +34,9 @@ PERMISSIONS = {
 }
 LEADER_PERMISSIONS = {"MEMBERS_VIEW_OWN_MINISTRY", "MINISTRIES_VIEW_OWN", "SMS_VIEW_OWN",
                       "MINISTRY_POSITION_VIEW", "MINISTRY_LEADERSHIP_VIEW"}
+PERMISSIONS.update(HOUSEHOLD_PERMISSIONS)
+PERMISSIONS.update(SCHOOL_PERMISSIONS)
+PERMISSIONS.update(CONTENT_PERMISSIONS)
 
 
 def navigation(capabilities):
@@ -38,7 +44,7 @@ def navigation(capabilities):
     permissions = set(capabilities.get("permissions", []))
     scoped = bool(capabilities.get("scope_ids"))
     items = [("Dashboard", "home")]
-    if "MEMBERS_VIEW_ALL" in permissions or (scoped and "MEMBERS_VIEW_OWN_MINISTRY" in permissions):
+    if "MEMBERS_VIEW_ALL" in permissions or (scoped and "MEMBERS_VIEW_OWN_MINISTRY" in permissions) or permissions.intersection({'HOUSEHOLD_VIEW','HOUSEHOLD_VIEW_ALL'}):
         items.append(("Members", "users"))
     if capabilities.get("can_view"):
         items.append(("Attendance", "attendance"))
@@ -46,7 +52,7 @@ def navigation(capabilities):
         items.append(("Ministries", "ministries"))
     for name, image, grant in (("Sunday School", "book", "SUNDAY_SCHOOL_VIEW"),
                                ("Finance", "finance", "FINANCE_VIEW"), ("Welfare", "heart", "WELFARE_VIEW")):
-        if grant in permissions:
+        if grant in permissions or (name=='Sunday School' and 'SUNDAY_SCHOOL_VIEW_ALL' in permissions):
             items.append((name, image))
     if "SMS_VIEW_ALL" in permissions or (scoped and "SMS_VIEW_OWN" in permissions):
         items.append(("SMS", "message"))

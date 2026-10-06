@@ -1,0 +1,3 @@
+import { BookOpen, CalendarDays, Globe, ChartNoAxesCombined, ClipboardCheck, HeartHandshake, House, MessageSquare, Network, Settings2, UsersRound, Wallet, type LucideIcon } from "lucide-react";
+const icons: Record<string, LucideIcon> = { calendar: CalendarDays,site: Globe,users: UsersRound, house: House, clipboard: ClipboardCheck, network: Network, book: BookOpen, message: MessageSquare, chart: ChartNoAxesCombined, settings: Settings2, wallet: Wallet, heart: HeartHandshake };
+export function ModuleIcon({ name, size = 20 }: { name: string; size?: number }) { const Icon = icons[name] ?? Network; return <Icon size={size} aria-hidden="true" />; }

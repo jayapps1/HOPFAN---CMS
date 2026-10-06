@@ -1,4 +1,5 @@
 from src.models.permission import Permission
+from src.models.content import ContentEntry,WebsiteSettings,WebsiteMedia,ContentMediaLink,Event,Announcement,PublicInquiry,ContentAudit
 from src.models.role import Role
 
 from src.models.member import (
@@ -15,6 +16,12 @@ from src.models.ministry_leadership import MinistryPosition, MinistryLeadershipA
 
 from src.models.user import User, UserStatus
 from src.models.security_audit import SecurityAuditLog
+from src.models.user_session import WebSession, WebRateLimit
+from src.models.household import Household, HouseholdMember, HouseholdAuditLog
+from src.models.sunday_school import (SundaySchoolClass, SundaySchoolStudent, SundaySchoolEnrollment,
+    SundaySchoolTeacherAssignment, SundaySchoolGuardian, SundaySchoolUserClassScope,
+    SundaySchoolLesson, SundaySchoolLessonClass, SundaySchoolAttendanceSession,
+    SundaySchoolRosterMember, SundaySchoolAttendanceRecord, SundaySchoolAuditLog)
 
 from src.models.attendance_session import (
     AttendanceSession,
@@ -37,6 +44,14 @@ __all__ = [
     "User",
     "UserStatus",
     "SecurityAuditLog",
+    "WebSession", "WebRateLimit",
+    "Household",
+    "HouseholdMember",
+    "HouseholdAuditLog",
+    "SundaySchoolClass", "SundaySchoolStudent", "SundaySchoolEnrollment",
+    "SundaySchoolTeacherAssignment", "SundaySchoolGuardian", "SundaySchoolUserClassScope",
+    "SundaySchoolLesson", "SundaySchoolLessonClass", "SundaySchoolAttendanceSession",
+    "SundaySchoolRosterMember", "SundaySchoolAttendanceRecord", "SundaySchoolAuditLog",
     "Member",
     "MemberStatus",
     "Gender",

@@ -16,6 +16,8 @@ class AuthorizationDenied(Exception):
 
 
 GLOBAL_EQUIVALENTS = {
+    **{f'{kind}_{action}_OWN_MINISTRY':f'{kind}_{action}_{suffix}'
+       for kind in ('EVENT','ANNOUNCEMENT') for action,suffix in (('VIEW','ALL'),('CREATE','GLOBAL'),('EDIT','GLOBAL'))},
     'MEMBERS_VIEW_OWN_MINISTRY': 'MEMBERS_VIEW_ALL',
     'MINISTRIES_VIEW_OWN': 'MINISTRIES_VIEW_ALL',
     'MINISTRY_LEADERSHIP_VIEW': 'MINISTRY_LEADERSHIP_VIEW_ALL',

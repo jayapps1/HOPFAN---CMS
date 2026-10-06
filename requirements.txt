@@ -19,3 +19,10 @@ qrcode==8.2
 SQLAlchemy==2.1.3
 typing_extensions==4.16.0
 tzdata==2026.5
+
+# Online API foundation (desktop versions above are unchanged).
+fastapi==0.142.2
+uvicorn[standard]==0.54.0
+# Pin the framework/schema versions verified with this foundation.
+starlette==1.7.0
+pydantic==2.13.5

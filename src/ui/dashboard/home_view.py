@@ -8,7 +8,7 @@ from src.ui.components.session_table import SessionRow
 
 
 class HomeView(ctk.CTkScrollableFrame):
-    def __init__(self, master, member_service, attendance_service, capabilities, destinations, navigate, open_session):
+    def __init__(self, master, member_service, attendance_service, capabilities, destinations, navigate, open_session, member_directory=True):
         super().__init__(master, fg_color='transparent', corner_radius=0)
         self.grid_columnconfigure(0, weight=1)
         self.loader = AsyncLoader(self)
@@ -30,7 +30,7 @@ class HomeView(ctk.CTkScrollableFrame):
         label(actions, 'Quick actions', 16, True).pack(anchor='w', padx=16, pady=(12, 8))
         buttons = ctk.CTkFrame(actions, fg_color='transparent')
         buttons.pack(fill='x', padx=12, pady=(0, 12))
-        for title, destination in [('View members', 'Members'), ('Take attendance', 'Attendance'), ('Attendance reports', 'Reports')]:
+        for title, destination in [('View members' if member_directory else 'View households', 'Members'), ('Take attendance', 'Attendance'), ('Attendance reports', 'Reports')]:
             if destination in destinations:
                 ActionButton(buttons, title, lambda d=destination: navigate(d),
                     'primary' if destination == 'Attendance' else 'secondary').pack(side='left', padx=4)
@@ -46,7 +46,7 @@ class HomeView(ctk.CTkScrollableFrame):
         self.notice.grid(row=6, column=0, sticky='ew', padx=20)
         self.open_session = open_session
         def fetch():
-            members = member_service.stats() if 'Members' in destinations else None
+            members = member_service.stats() if member_directory and 'Members' in destinations else None
             if not capabilities.get('can_view'):
                 return members, None, [], []
             return (members, attendance_service.overview(),
