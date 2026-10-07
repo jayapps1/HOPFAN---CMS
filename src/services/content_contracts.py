@@ -47,7 +47,7 @@ class EditorialData(Contract):
     primary_href:str=Field(default='/new-here',max_length=1000)
     secondary_label:str=Field(default='Explore ministries',max_length=100)
     secondary_href:str=Field(default='/ministries',max_length=1000)
-    section_order:list[Literal['welcome','services','events','sermons','ministries','sunday-school','announcements','gallery','prayer','visit','contact']]=Field(default_factory=lambda:['welcome','services','events','sermons','ministries','sunday-school','announcements','gallery','prayer','visit','contact'],max_length=11)
+    section_order:list[Literal['welcome','services','events','sermons','ministries','leadership','sunday-school','announcements','gallery','donate','prayer','visit','contact']]=Field(default_factory=lambda:['welcome','services','events','sermons','ministries','leadership','sunday-school','announcements','gallery','donate','prayer','visit','contact'],max_length=13)
     featured_slugs:list[str]=Field(default_factory=list,max_length=20)
     consent_reference:str=Field(default='',max_length=300)
     @field_validator('youtube_url')

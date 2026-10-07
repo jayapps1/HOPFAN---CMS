@@ -39,7 +39,7 @@ from src.models.attendance_record import (
 
 
 __all__ = [
-    "Permission",
+    "Permission", "Donation", "DonationCategory",
     "Role",
     "User",
     "UserStatus",
@@ -74,3 +74,4 @@ __all__ = [
     "UserMinistryScope",
     "AuthorizationAuditLog",
 ]
+from src.models.donation import Donation,DonationCategory

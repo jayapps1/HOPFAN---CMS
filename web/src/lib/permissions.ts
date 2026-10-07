@@ -16,7 +16,7 @@ export const modules: ModuleDefinition[] = [
   { id: "sms", label: "Messaging", icon: "message", description: "Stay connected with church and ministry members.", global: ["SMS_VIEW_ALL"], scoped: ["SMS_VIEW_OWN"] },
   { id: "reports", label: "Reports", icon: "chart", description: "Attendance reporting and authorised Sunday School insights.", global: [], grants: ["ATTENDANCE_EXPORT", "SUNDAY_SCHOOL_REPORT_VIEW"] },
   { id: "administration", label: "Administration", icon: "settings", description: "Account administration, software roles and security.", global: [], grants: ["ADMINISTRATION_VIEW", "USER_VIEW", "ROLE_VIEW", "PERMISSION_VIEW", "SECURITY_AUDIT_VIEW"] },
-  { id: "finance", label: "Finance", icon: "wallet", description: "Your authorised church finance workspace.", global: [], grants: ["FINANCE_VIEW"] },
+  { id: "finance", label: "Finance", icon: "wallet", description: "Your authorised church finance workspace.", global: [], grants: ["FINANCE_VIEW","DONATIONS_VIEW"] },
   { id: "welfare", label: "Welfare", icon: "heart", description: "Your authorised care and welfare workspace.", global: [], grants: ["WELFARE_VIEW"] },
 ];
 export function hasAny(user: CurrentUser, permissions: readonly string[]): boolean {

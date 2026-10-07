@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import * as Dialog from "@radix-ui/react-dialog";
 import {Menu,X,ArrowUpRight} from "lucide-react";
-const links=[["Home","/"],["About","/about"],["Ministries","/ministries"],["Sunday School","/sunday-school"],["Events","/events"],["Sermons","/sermons"],["Gallery","/gallery"]];
+const links=[["Home","/"],["About","/about"],["Ministries","/ministries"],["Sunday School","/sunday-school"],["Events","/events"],["Sermons","/sermons"],["Gallery","/gallery"],["Donate","/donate"]];
 export function PublicHeader({name}:{name:string}){
   const[open,setOpen]=useState(false);
   return<header className="public-header"><Link href="/" className="public-brand"><Image src="/brand/hopfan-logo.png" width={44} height={47} alt="HOPFAN church logo"/><span>{name}<small>House of Prayer for All Nations</small></span></Link>

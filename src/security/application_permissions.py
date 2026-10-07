@@ -2,6 +2,7 @@
 from src.security.household_permissions import PERMISSIONS as HOUSEHOLD_PERMISSIONS
 from src.security.sunday_school_permissions import PERMISSIONS as SCHOOL_PERMISSIONS
 from src.security.content_permissions import PERMISSIONS as CONTENT_PERMISSIONS
+from src.security.donation_permissions import PERMISSIONS as DONATION_PERMISSIONS
 PERMISSIONS = {
     "MEMBERS_VIEW_ALL": "View the church member directory",
     "MEMBERS_VIEW_OWN_MINISTRY": "View members of assigned ministries",
@@ -37,6 +38,7 @@ LEADER_PERMISSIONS = {"MEMBERS_VIEW_OWN_MINISTRY", "MINISTRIES_VIEW_OWN", "SMS_V
 PERMISSIONS.update(HOUSEHOLD_PERMISSIONS)
 PERMISSIONS.update(SCHOOL_PERMISSIONS)
 PERMISSIONS.update(CONTENT_PERMISSIONS)
+PERMISSIONS.update(DONATION_PERMISSIONS)
 
 
 def navigation(capabilities):

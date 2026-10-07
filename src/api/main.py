@@ -34,7 +34,7 @@ def create_app(settings: OnlineSettings | None = None) -> FastAPI:
         allow_origins=list(settings.cors_origins),
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH"],
-        allow_headers=["Content-Type", "X-CSRF-Token", "X-Request-ID"],
+        allow_headers=["Content-Type", "X-CSRF-Token", "X-Request-ID", "X-Donation-Token"],
         expose_headers=["X-Request-ID"],
     )
     application.add_middleware(AllowedHostMiddleware, allowed_hosts=settings.api_allowed_hosts)

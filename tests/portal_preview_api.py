@@ -41,6 +41,8 @@ from src.services.website_media_service import LocalWebsiteStorage
 from src.services.content_contracts import ContentWrite,SiteConfiguration
 from src.models import ContentEntry,WebsiteMedia,ContentMediaLink,WebsiteSettings,Event,Announcement
 from PIL import Image
+from tests.payment_fixtures import TestPaystack
+from src.models import DonationCategory
 
 PASSWORD = "Portal-Synthetic!2026"
 ROOT = Path(__file__).resolve().parents[1]
@@ -156,6 +158,11 @@ async def lifespan(_app):
                 validated=ContentWrite.model_validate(values);snapshot=validated.model_dump(mode='json',exclude={'expected_updated_at','ministry_id','member_id'})
                 entry=ContentEntry(kind=kind,slug=slug,title=title,draft_data=snapshot,published_data=snapshot,status='PUBLISHED',published_at=datetime.now(timezone.utc),ministry_id=validated.ministry_id,created_by=account_users['admin'].id)
                 db.add(entry);db.flush();db.add(ContentMediaLink(content_id=entry.id,media_id=asset.id))
+            for index in range(1,10):
+                slug=f'synthetic-leader-{index}'
+                snapshot=ContentWrite.model_validate(dict(kind='LEADERSHIP',slug=slug,title=f'Synthetic leader {index}',summary='Published synthetic ministry responsibility.',data={'public_name':f'Synthetic leader {index}','public_title':'Synthetic ministry leader','display_order':index})).model_dump(mode='json',exclude={'expected_updated_at','ministry_id','member_id'})
+                db.add(ContentEntry(kind='LEADERSHIP',slug=slug,title=snapshot['title'],draft_data=snapshot,published_data=snapshot,status='PUBLISHED',published_at=datetime.now(timezone.utc)))
+            db.add(DonationCategory(name='Reviewed fixture offering',display_order=0))
             db.add(Event(slug='fixture-event',title='Synthetic community event',description='A synthetic public event fixture.',scope='CHURCH_WIDE',visibility='PUBLIC',status='PUBLISHED',start_datetime=datetime.now(timezone.utc)+timedelta(days=5),location='Synthetic venue',published_at=datetime.now(timezone.utc)))
             db.add(Announcement(slug='fixture-notice',title='Synthetic announcement',body='An approved synthetic notice.',scope='CHURCH_WIDE',audience='BOTH',status='PUBLISHED',published_at=datetime.now(timezone.utc)))
             db.commit()
@@ -169,6 +176,7 @@ app = create_app(OnlineSettings(web_public_origin="", web_portal_origin="http://
                               web_login_rate_ip_limit=1000, web_login_rate_account_limit=1000, web_csrf_rate_ip_limit=1000))
 app.router.lifespan_context = lifespan
 app.state.website_storage=media_storage
+app.state.payment_provider=TestPaystack()
 
 
 def database():
@@ -217,3 +225,10 @@ if __name__ == "__main__":
     import sys
     if sys.argv[1:] == ["cleanup"]: cleanup()
     else: raise SystemExit("Use this fixture only through the controlled Playwright runner.")
+
+
+@app.post('/_test/payments/{reference}',dependencies=[Depends(loopback)])
+def payment_status(reference:str,status:str):
+    if status not in {'success','failed','abandoned','pending'} or reference not in app.state.payment_provider.transactions:raise HTTPException(404)
+    app.state.payment_provider.transactions[reference]['status']=status
+    return {'configured':True}

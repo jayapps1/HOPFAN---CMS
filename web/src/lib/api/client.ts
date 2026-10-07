@@ -18,8 +18,12 @@ const messages: Record<string, string> = {
   RESOURCE_NOT_FOUND: "This record is unavailable.",
   OPERATION_CONFLICT: "This record changed or already exists. Refresh and try again.",
   BUSINESS_RULE_VIOLATION: "This operation is unavailable in the current state. Check the fields and refresh.",
+  PAYMENT_UNAVAILABLE: "Online checkout is temporarily unavailable. Please contact the church or try again later.",
+  PAYMENT_UNCONFIRMED: "We couldn’t confirm this payment. Please contact the church with your reference.",
+  CHECKOUT_PENDING: "Checkout is still being prepared. Please wait, then try again.",
+  ATTEMPT_CONFLICT: "Start a new donation for changed details.",
 };
-interface RequestOptions { method?: "GET" | "POST" | "PATCH"; body?: unknown; authenticated?: boolean; csrf?: boolean; loginMethod?: LoginMethod; signal?: AbortSignal; responseType?: "text" }
+interface RequestOptions { method?: "GET" | "POST" | "PATCH"; body?: unknown; authenticated?: boolean; csrf?: boolean; loginMethod?: LoginMethod; signal?: AbortSignal; responseType?: "text"; credentials?:RequestCredentials; headers?:Record<string,string> }
 
 export class ApiClient {
   private csrfToken: string | null = null;
@@ -42,10 +46,10 @@ export class ApiClient {
     let data: unknown;
     try {
       response = await this.fetcher(`${this.baseUrl}${path}`, {
-        method: options.method ?? "GET", credentials: "include", cache: "no-store",
+        method: options.method ?? "GET", credentials: options.credentials ?? "include", cache: "no-store",
         signal: options.signal ? AbortSignal.any([controller.signal, options.signal]) : controller.signal,
         headers: { Accept: "application/json", ...(options.body !== undefined ? { "Content-Type": "application/json" } : {}),
-                   ...(options.csrf ? { "X-CSRF-Token": this.csrfToken ?? "" } : {}) },
+                   ...(options.csrf ? { "X-CSRF-Token": this.csrfToken ?? "" } : {}),...options.headers },
         body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
       });
       try { data = response.ok && options.responseType === "text" ? await response.text() : await response.json(); }
@@ -100,6 +104,14 @@ export class ApiClient {
   async mutate<T>(path: string, body: unknown, decoder: (value: unknown) => T, method: "POST" | "PATCH" = "POST"): Promise<T> {
     if (!path.startsWith("/api/v1/")) throw new Error("Invalid API resource");
     return this.parse(await this.request(path, { method, body, authenticated: true, csrf: true }), decoder);
+  }
+  async publicMutation<T>(path:string,body:unknown,decoder:(value:unknown)=>T):Promise<T>{
+    if(!path.startsWith('/api/v1/public/'))throw new Error('Invalid public resource');
+    return this.parse(await this.request(path,{method:'POST',body,credentials:'omit',authenticated:false}),decoder);
+  }
+  async publicGet<T>(path:string,decoder:(value:unknown)=>T,token?:string):Promise<T>{
+    if(!path.startsWith('/api/v1/public/'))throw new Error('Invalid public resource');
+    return this.parse(await this.request(path,{credentials:'omit',authenticated:false,headers:token?{'X-Donation-Token':token}:undefined}),decoder);
   }
   async csv(path: string): Promise<string> {
     if (!path.startsWith("/api/v1/")) throw new Error("Invalid API resource");

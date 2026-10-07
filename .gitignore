@@ -27,3 +27,6 @@ web/*.tsbuildinfo
 web/*.log
 !.env.local.example
 !web/.env.local.example
+
+# Local browser-validation diagnostics.
+web/.logs/

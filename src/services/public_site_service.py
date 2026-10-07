@@ -1,5 +1,5 @@
 """Anonymous reads select published snapshots and approved linked website assets."""
-from sqlalchemy import select,or_,func,case
+from sqlalchemy import select,or_,func,case,Integer,cast
 from src.models.content import ContentEntry,ContentMediaLink,WebsiteSettings,WebsiteMedia,Event,Announcement
 from src.services.content_base import ContentMissing,ident,now
 from src.services.content_contracts import SiteConfiguration,embed_video,safe_link
@@ -46,7 +46,8 @@ class PublicSiteService:
         if series:stmt=stmt.where(ContentEntry.published_data['data']['series'].astext==series)
         if speaker:stmt=stmt.where(ContentEntry.published_data['data']['speaker'].astext==speaker)
         total=self.db.scalar(select(func.count()).select_from(stmt.subquery()))
-        rows=self.db.scalars(stmt.order_by(ContentEntry.published_at.desc(),ContentEntry.id).limit(min(limit,100)).offset(offset)).all()
+        ordering=(self.display_order(),ContentEntry.slug,ContentEntry.id) if kind=='LEADERSHIP' else (ContentEntry.published_at.desc(),ContentEntry.id)
+        rows=self.db.scalars(stmt.order_by(*ordering).limit(min(limit,100)).offset(offset)).all()
         assets=self.assets(self.references(rows))
         return dict(total=total,rows=[self.project(row,assets) for row in rows])
     def content(self,kind,slug):
@@ -85,10 +86,15 @@ class PublicSiteService:
     def site(self):
         homepage=self.db.scalar(select(ContentEntry).where(ContentEntry.kind=='HOMEPAGE',ContentEntry.slug=='home',ContentEntry.status=='PUBLISHED'))
         featured=homepage.published_data.get('data',{}).get('featured_slugs',[]) if homepage else []
+        leadership_order=case((ContentEntry.kind=='LEADERSHIP',self.display_order()),else_=0)
+        publication_order=case((ContentEntry.kind=='LEADERSHIP',None),else_=ContentEntry.published_at)
         ranks=select(ContentEntry.id,func.row_number().over(partition_by=ContentEntry.kind,
-            order_by=(case((ContentEntry.slug.in_(featured),0),else_=1),ContentEntry.published_at.desc())).label('rank'))\
+            order_by=(case((ContentEntry.slug.in_(featured),0),else_=1),leadership_order,publication_order.desc(),ContentEntry.slug,ContentEntry.id)).label('rank'))\
             .where(ContentEntry.status=='PUBLISHED',ContentEntry.published_data.is_not(None)).subquery()
-        rows=self.db.scalars(select(ContentEntry).where(or_(ContentEntry.id.in_(select(ranks.c.id).where(ranks.c.rank<=6)),(ContentEntry.kind=='PAGE')&(ContentEntry.slug=='about')&(ContentEntry.status=='PUBLISHED')))).all()
+        rows=self.db.scalars(select(ContentEntry).where(or_(ContentEntry.id.in_(select(ranks.c.id).join(ContentEntry,ContentEntry.id==ranks.c.id)
+            .where(ranks.c.rank<=case((ContentEntry.kind=='LEADERSHIP',8),else_=6))),
+            (ContentEntry.kind=='PAGE')&(ContentEntry.slug=='about')&(ContentEntry.status=='PUBLISHED')))
+            .order_by(case((ContentEntry.slug.in_(featured),0),else_=1),leadership_order,publication_order.desc(),ContentEntry.slug,ContentEntry.id)).all()
         assets=self.assets(self.references(rows));group={}
         for row in rows:group.setdefault(row.kind,[]).append((row,self.project(row,assets)))
         home=next((row for row,_ in group.get('HOMEPAGE',[]) if row.slug=='home'),None)
@@ -102,3 +108,6 @@ class PublicSiteService:
             welcome=welcome,ministries=[dto for _,dto in group.get('MINISTRY',[])],leadership=[dto for _,dto in group.get('LEADERSHIP',[])],
             sermons=[dto for _,dto in group.get('SERMON',[])],galleries=[dto for _,dto in group.get('GALLERY',[])],
             events=self.events(limit=6)['rows'],announcements=self.announcements(limit=6)['rows'])
+
+    @staticmethod
+    def display_order():return func.coalesce(cast(ContentEntry.published_data['data']['display_order'].astext,Integer),0)
