@@ -1,2 +1,2 @@
-import {WebsiteContentList} from "@/features/cms/content-manager";
-export default function Page(){return <WebsiteContentList section="sermons"/>;}
+import {SermonCms} from '@/features/sermons/cms';
+export default function Page(){return <SermonCms/>;}

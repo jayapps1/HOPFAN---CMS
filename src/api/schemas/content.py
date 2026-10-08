@@ -105,13 +105,44 @@ class PublicMinistry(PublicPage):
 class PublicLeadership(PublicPage):
     public_name:str
     public_title:str
+class PublicSermonAsset(ApiResponse):
+    id:str
+    media_type:str
+    mime_type:str
+    file_size:int
+    duration_seconds:int|None
+    width:int|None
+    height:int|None
+    quality_label:str
+    url:str
+    download_url:str|None
+class PublicSermonCollection(ApiResponse):
+    id:str
+    name:str
+    slug:str
 class PublicSermon(PublicPage):
+    subtitle:str=''
     speaker:str
     sermon_date:date
     scripture_reference:str
     series:str
-    video_embed_url:str
-    audio_url:str
+    series_info:PublicSermonCollection|None=None
+    category:PublicSermonCollection|None=None
+    tags:list[str]=Field(default_factory=list)
+    service_type:str=''
+    featured:bool=False
+    duration_seconds:int|None=None
+    video_source_type:str='NONE'
+    video_embed_url:str=''
+    external_video_url:str=''
+    audio_url:str=''
+    media:list[PublicSermonAsset]=Field(default_factory=list)
+    transcript:str=''
+    speaker_profile_slug:str=''
+    published_at:datetime|None=None
+    views:int=0
+    audio_plays:int=0
+    video_plays:int=0
 class PublicGallery(PublicPage):
     images:list[PublicImage]
 class PublicEvent(ApiResponse):
@@ -129,6 +160,8 @@ class PublicAnnouncement(ApiResponse):
     body:str
     publish_from:datetime|None
     publish_until:datetime|None
+    priority:int=0
+    published_at:datetime|None=None
 class PublicHero(ApiResponse):
     headline:str
     text:str
@@ -141,6 +174,11 @@ class PublicSite(ApiResponse):
     configuration:SiteConfiguration
     hero:PublicHero
     section_order:list[str]
+    seo_title:str=''
+    seo_description:str=''
+    sunday_school:PublicPage|None=None
+    events_available:bool=True
+    gallery_count:int=5
     welcome:PublicPage|None
     ministries:list[PublicMinistry]
     leadership:list[PublicLeadership]

@@ -3,9 +3,10 @@ import type {Metadata} from "next";
 export interface PublicImage {url:string;alt_text:string;width:number;height:number;caption:string}
 export interface PublicContent {slug:string;title:string;summary:string;body:string;seo_title:string;seo_description:string;image:PublicImage|null;public_name?:string;public_title?:string;meeting_information?:string;public_contact?:string;speaker?:string;sermon_date?:string;scripture_reference?:string;series?:string;video_embed_url?:string;audio_url?:string;images?:PublicImage[]}
 export interface PublicEvent {slug:string;title:string;description:string;start_datetime:string;end_datetime:string|null;location:string;event_type:string;image:PublicImage|null}
-export interface PublicAnnouncement {slug:string;title:string;body:string;publish_from:string|null;publish_until:string|null}
-export interface Configuration {church_name:string;full_name:string;tagline:string;address:string;public_phone:string;public_email:string;service_times:{name:string;schedule:string}[];social_links:{label:string;url:string}[];map_url:string;footer_text:string;visitor_form_enabled:boolean;prayer_form_enabled:boolean;contact_form_enabled:boolean}
-export interface PublicSite {configuration:Configuration;hero:{headline:string;text:string;primary_label:string;primary_href:string;secondary_label:string;secondary_href:string;image:PublicImage|null};section_order:string[];welcome:PublicContent|null;ministries:PublicContent[];leadership:PublicContent[];sermons:PublicContent[];galleries:PublicContent[];events:PublicEvent[];announcements:PublicAnnouncement[]}
+export interface PublicAnnouncement {slug:string;title:string;body:string;publish_from:string|null;publish_until:string|null;priority:number;published_at:string|null}
+export interface ServiceTime {id:string|null;name:string;schedule:string;day_of_week:string|null;start_time:string|null;end_time:string|null;description:string;location:string;display_order:number;active:boolean;featured:boolean;created_at:string|null;updated_at:string|null}
+export interface Configuration {church_name:string;full_name:string;tagline:string;address:string;public_phone:string;public_email:string;timezone:string;service_times:ServiceTime[];social_links:{label:string;url:string}[];map_url:string;footer_text:string;visitor_form_enabled:boolean;prayer_form_enabled:boolean;contact_form_enabled:boolean}
+export interface PublicSite {configuration:Configuration;hero:{headline:string;text:string;primary_label:string;primary_href:string;secondary_label:string;secondary_href:string;image:PublicImage|null};section_order:string[];seo_title:string;seo_description:string;events_available:boolean;gallery_count:number;sunday_school:PublicContent|null;welcome:PublicContent|null;ministries:PublicContent[];leadership:PublicContent[];sermons:PublicContent[];galleries:PublicContent[];events:PublicEvent[];announcements:PublicAnnouncement[]}
 export interface PublicPage<T>{items:T[];page:number;page_size:number;total:number;pages:number}
 const origin=process.env.PUBLIC_API_ORIGIN??process.env.NEXT_PUBLIC_API_BASE_URL??"http://localhost:8000";
 export const getPublic=cache(async function<T>(path:string):Promise<T|null>{
@@ -14,8 +15,8 @@ export const getPublic=cache(async function<T>(path:string):Promise<T|null>{
     if(!response.ok)return null;return await response.json() as T;}catch{return null;}
 });
 export const getSite=()=>getPublic<PublicSite>("site");
-export function publicImageUrl(image:PublicImage|null|undefined){return image?.url.startsWith("/api/v1/public/media/")?origin+image.url:"";}
-export const fallbackConfiguration:Configuration={church_name:"HOPFAN",full_name:"House of Prayer for All Nations",tagline:"",address:"",public_phone:"",public_email:"",service_times:[],social_links:[],map_url:"",footer_text:"",visitor_form_enabled:true,prayer_form_enabled:true,contact_form_enabled:true};
+export function publicImageUrl(image:PublicImage|null|undefined){return image&&/^\/api\/v1\/public\/(?:media\/[a-f0-9-]{36}|sermons\/[a-z0-9-]+\/media\/[a-f0-9-]{36})(?:\?size=(?:320|960|1920))?$/.test(image.url)?origin+image.url:"";}
+export const fallbackConfiguration:Configuration={church_name:"HOPFAN",full_name:"House of Prayer for All Nations",tagline:"",address:"",public_phone:"",public_email:"",timezone:"UTC",service_times:[],social_links:[],map_url:"",footer_text:"",visitor_form_enabled:true,prayer_form_enabled:true,contact_form_enabled:true};
 export function canonicalOrigin():string|null {
   const raw=process.env.SITE_PUBLIC_ORIGIN;
   if(!raw)return null;

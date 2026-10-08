@@ -1,6 +1,6 @@
 """Validated structured editorial data shared by API and services."""
 import re
-from datetime import date
+from datetime import date,time
 from typing import Literal
 from uuid import UUID
 from urllib.parse import urlsplit,parse_qs
@@ -27,6 +27,8 @@ class GalleryImage(Contract):
     asset_id:UUID
     caption:str=Field(default='',max_length=1000)
     alt_text:str=Field(min_length=1,max_length=500)
+HOME_SECTIONS=['services','events','welcome','ministries','leadership','sermons','sunday-school','announcements','gallery','donate','prayer','visit','contact']
+
 class EditorialData(Contract):
     image_id:UUID|None=None
     public_name:str=Field(default='',max_length=200)
@@ -40,6 +42,29 @@ class EditorialData(Contract):
     youtube_url:str=Field(default='',max_length=1000)
     audio_url:str=Field(default='',max_length=1000)
     images:list[GalleryImage]=Field(default_factory=list,max_length=100)
+    subtitle:str=Field(default='',max_length=300)
+    speaker_member_id:UUID|None=None
+    speaker_profile_slug:str=Field(default='',max_length=160)
+    series_id:UUID|None=None
+    category_id:UUID|None=None
+    sermon_ministry_id:UUID|None=None
+    service_type:str=Field(default='',max_length=100)
+    duration_seconds:int|None=Field(default=None,ge=0,le=604800)
+    sermon_visibility:Literal['PUBLIC','PORTAL_ONLY','PRIVATE']='PUBLIC'
+    featured:StrictBool=False
+    video_source_type:Literal['NONE','UPLOADED','YOUTUBE','VIMEO','EXTERNAL']='NONE'
+    video_asset_id:UUID|None=None
+    audio_asset_id:UUID|None=None
+    thumbnail_asset_id:UUID|None=None
+    caption_asset_id:UUID|None=None
+    transcript_asset_id:UUID|None=None
+    document_asset_id:UUID|None=None
+    external_video_url:str=Field(default='',max_length=1000)
+    allow_audio_download:StrictBool=False
+    allow_video_download:StrictBool=False
+    tags:list[str]=Field(default_factory=list,max_length=30)
+    transcript:str=Field(default='',max_length=100000)
+    scheduled_publish_at:AwareDatetime|None=None
     display_order:int=Field(default=0,ge=0,le=100000)
     hero_headline:str=Field(default='',max_length=200)
     hero_text:str=Field(default='',max_length=1000)
@@ -47,7 +72,11 @@ class EditorialData(Contract):
     primary_href:str=Field(default='/new-here',max_length=1000)
     secondary_label:str=Field(default='Explore ministries',max_length=100)
     secondary_href:str=Field(default='/ministries',max_length=1000)
-    section_order:list[Literal['welcome','services','events','sermons','ministries','leadership','sunday-school','announcements','gallery','donate','prayer','visit','contact']]=Field(default_factory=lambda:['welcome','services','events','sermons','ministries','leadership','sunday-school','announcements','gallery','donate','prayer','visit','contact'],max_length=13)
+    section_order:list[Literal['welcome','services','events','sermons','ministries','leadership','sunday-school','announcements','gallery','donate','prayer','visit','contact']]=Field(default_factory=lambda:list(HOME_SECTIONS),max_length=13)
+    events_count:int=Field(default=6,ge=1,le=8)
+    ministries_count:int=Field(default=3,ge=1,le=4)
+    announcements_count:int=Field(default=3,ge=1,le=3)
+    gallery_count:int=Field(default=5,ge=1,le=5)
     featured_slugs:list[str]=Field(default_factory=list,max_length=20)
     consent_reference:str=Field(default='',max_length=300)
     @field_validator('youtube_url')
@@ -78,8 +107,29 @@ class ContentWrite(Contract):
         if self.kind=='SERMON' and (not self.data.speaker or not self.data.sermon_date):raise ValueError('Sermons need a speaker and date.')
         return self
 class ServiceTime(Contract):
+    id:UUID|None=None
     name:str=Field(min_length=1,max_length=100)
-    schedule:str=Field(min_length=1,max_length=200)
+    schedule:str=Field(default='',max_length=300)
+    day_of_week:Literal['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY']|None=None
+    start_time:time|None=None
+    end_time:time|None=None
+    description:str=Field(default='',max_length=1000)
+    location:str=Field(default='',max_length=500)
+    display_order:int=Field(default=0,ge=0,le=100000)
+    active:StrictBool=True
+    featured:StrictBool=True
+    created_at:AwareDatetime|None=None
+    updated_at:AwareDatetime|None=None
+    @model_validator(mode='after')
+    def times(self):
+        if not self.name.strip():raise ValueError('Enter a service name.')
+        if any(value is not None for value in (self.day_of_week,self.start_time,self.end_time)):
+            if not all(value is not None for value in (self.day_of_week,self.start_time,self.end_time)):raise ValueError('Choose a weekday, start and end time.')
+            if self.start_time.tzinfo or self.end_time.tzinfo or self.end_time<=self.start_time:raise ValueError('End time must follow start time, using local church time.')
+            def clock(value):return f'{value.hour%12 or 12}:{value.minute:02d} '+('AM' if value.hour<12 else 'PM')
+            self.schedule=self.day_of_week.title()+' '+clock(self.start_time)+' \u2013 '+clock(self.end_time)
+        elif not self.schedule.strip():raise ValueError('Configure structured times or retain a valid legacy schedule.')
+        return self
 class SocialLink(Contract):
     label:str=Field(min_length=1,max_length=100)
     url:str=Field(max_length=1000)
@@ -91,6 +141,7 @@ class SiteConfiguration(Contract):
     address:str=Field(default='',max_length=1000)
     public_phone:str=Field(default='',max_length=100)
     public_email:str=Field(default='',max_length=254)
+    timezone:str=Field(default='UTC',max_length=100)
     service_times:list[ServiceTime]=Field(default_factory=list,max_length=20)
     social_links:list[SocialLink]=Field(default_factory=list,max_length=10)
     map_url:str=Field(default='',max_length=1000)
@@ -99,6 +150,18 @@ class SiteConfiguration(Contract):
     visitor_form_enabled:StrictBool=True
     prayer_form_enabled:StrictBool=True
     _url=field_validator('map_url')(safe_link)
+    @field_validator('timezone')
+    @classmethod
+    def church_timezone(cls,value):
+        from zoneinfo import ZoneInfo,ZoneInfoNotFoundError
+        try:ZoneInfo(value)
+        except (ValueError,ZoneInfoNotFoundError):raise ValueError('Choose a valid IANA church timezone.') from None
+        return value
+    @model_validator(mode='after')
+    def service_ids(self):
+        ids=[service.id for service in self.service_times if service.id]
+        if len(ids)!=len(set(ids)):raise ValueError('Service IDs must be unique.')
+        return self
 class SettingsWrite(Contract):
     data:SiteConfiguration
     expected_updated_at:AwareDatetime|None=None

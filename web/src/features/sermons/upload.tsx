@@ -1,0 +1,16 @@
+"use client";
+import {useRef,useState} from 'react';
+import {UploadCloud} from 'lucide-react';
+import {Button,Input} from '@/components/ui/primitives';
+import {api} from '@/lib/api/client';
+import {fileSize,type MediaKind} from './types';
+import {parsePrivateAsset,type SermonOptions} from './contracts';
+export function SermonUpload({sermonId,options,completed}:{sermonId:string;options:SermonOptions;completed:()=>Promise<void>}){
+  const[kind,setKind]=useState<MediaKind>('VIDEO'),[file,setFile]=useState<File|null>(null),[rights,setRights]=useState(false),[download,setDownload]=useState(false),[progress,setProgress]=useState(0),[busy,setBusy]=useState(false),[error,setError]=useState('');const controller=useRef<AbortController|null>(null);
+  return<div className='sermon-upload'><div className='form-grid'><label>Media type<select aria-label='Media type' value={kind} disabled={busy} onChange={event=>{setKind(event.target.value as MediaKind);setFile(null);setError('');}}>{Object.keys(options.limits).map(kind=><option key={kind}>{kind}</option>)}</select></label><div><strong>Maximum size</strong><p className='muted'>{fileSize(options.limits[kind])} · {options.allowed_extensions[kind].map(value=>value.toUpperCase()).join(', ')}</p></div></div>
+    <label className='sermon-dropzone' onDragOver={event=>event.preventDefault()} onDrop={event=>{event.preventDefault();if(!busy)setFile(event.dataTransfer.files[0]||null);}}><UploadCloud size={30} aria-hidden='true'/><strong>{file?file.name:'Drop a media file here or choose a file'}</strong><span>{file?fileSize(file.size):'Media is inspected privately before it can be published.'}</span><Input type='file' aria-label='Choose sermon media file' disabled={busy} accept={options.allowed_extensions[kind].map(extension=>'.'+extension).join(',')} onChange={event=>setFile(event.target.files?.[0]||null)}/></label>
+    <label className='checkbox-label'><input type='checkbox' checked={rights} disabled={busy} onChange={event=>setRights(event.target.checked)}/>I confirm HOPFAN owns or is authorized to manage and distribute this media, with the required consent.</label><label className='checkbox-label'><input type='checkbox' checked={download} disabled={busy} onChange={event=>setDownload(event.target.checked)}/>This hosted asset may be downloaded when the sermon’s download setting permits it.</label>
+    {busy&&<><progress value={progress} max={100} aria-label='Upload progress'/><p role='status'>{progress}% uploaded{progress===100?' · Queuing media inspection…':''}</p></>}{error&&<p className='error-message' role='alert'>{error}</p>}
+    <div className='live-actions'><Button type='button' disabled={busy||!file||!rights} onClick={async()=>{if(!file)return;if(file.size>options.limits[kind]){setError('The selected file exceeds the configured size limit.');return;}setBusy(true);setError('');setProgress(0);controller.current=new AbortController();try{parsePrivateAsset(await api.uploadSermon('/api/v1/sermons/'+sermonId+'/media',file,kind,rights,download,setProgress,controller.current.signal));setFile(null);await completed();}catch(error){setError(error instanceof Error?error.message:'Upload failed.');}finally{setBusy(false);}}}>Upload Media</Button>{busy&&<Button type='button' variant='secondary' onClick={()=>controller.current?.abort()}>Cancel Upload</Button>}</div>
+  </div>;
+}

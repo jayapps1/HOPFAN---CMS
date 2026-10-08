@@ -65,6 +65,7 @@ class OnlineSettings:
     web_login_rate_account_limit: int = 10
     web_csrf_rate_window_seconds: int = 60
     web_csrf_rate_ip_limit: int = 60
+    sermon_scheduler_enabled: bool = False
 
     def __post_init__(self) -> None:
         if self.app_env not in {"development", "staging", "production"}:
@@ -129,6 +130,7 @@ class OnlineSettings:
         hosts = os.getenv("API_ALLOWED_HOSTS", "127.0.0.1,localhost" if development else "")
         return cls(
             app_env=environment,
+            sermon_scheduler_enabled=_boolean("SERMON_SCHEDULER_ENABLED", True),
             api_host=os.getenv("API_HOST", "127.0.0.1"),
             api_port=port,
             api_debug=_boolean("API_DEBUG", False),

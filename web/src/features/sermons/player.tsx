@@ -1,0 +1,25 @@
+"use client";
+import {useRef,useState} from 'react';
+import {Play,Headphones,Download,Copy,Check} from 'lucide-react';
+import {api} from '@/lib/api/client';
+import {fileSize,type Sermon} from './types';
+export function SermonPlayer({sermon,initialMode='VIDEO',canonical}:{sermon:Sermon;initialMode?:'VIDEO'|'AUDIO';canonical:string}){
+  const video=sermon.media.find(item=>item.media_type==='VIDEO'),audio=sermon.media.find(item=>item.media_type==='AUDIO'),caption=sermon.media.find(item=>item.media_type==='CAPTION');
+  const hasVideo=!!(video||sermon.video_embed_url||sermon.external_video_url),hasAudio=!!(audio||sermon.audio_url);
+  const[mode,setMode]=useState<'VIDEO'|'AUDIO'>(initialMode==='AUDIO'&&hasAudio||!hasVideo&&hasAudio?'AUDIO':'VIDEO');const[loaded,setLoaded]=useState(false),[error,setError]=useState(''),[copied,setCopied]=useState(false);
+  const media=useRef<HTMLMediaElement|null>(null),sent=useRef(new Set<string>());
+  function switchMode(next:'VIDEO'|'AUDIO'){media.current?.pause();setMode(next);setError('');}
+  function playback(){const node=media.current;if(!node||node.currentTime<10||sent.current.has(mode))return;sent.current.add(mode);
+    try{const key='hopfan-sermon-play:'+sermon.slug+':'+mode+':'+new Date().toISOString().slice(0,10);let token=sessionStorage.getItem(key);if(!token){token=crypto.randomUUID();sessionStorage.setItem(key,token);}void api.publicMutation('/api/v1/public/sermons/'+sermon.slug+'/playback',{event:mode+'_PLAY',token,elapsed_seconds:Math.floor(node.currentTime)},value=>value).catch(()=>{});}catch{ /* Playback remains available when tab storage is disabled. */ }
+  }
+  return<div className='sermon-playback'><div className='sermon-mode' role='group' aria-label='Playback mode'>{hasVideo&&<button aria-pressed={mode==='VIDEO'} onClick={()=>switchMode('VIDEO')}><Play size={18} aria-hidden='true'/>Watch</button>}{hasAudio&&<button aria-pressed={mode==='AUDIO'} onClick={()=>switchMode('AUDIO')}><Headphones size={18} aria-hidden='true'/>Listen</button>}</div>
+    <div className={'sermon-player '+(mode==='AUDIO'?'sermon-audio-mode':'')}>
+      {mode==='VIDEO'&&(video||sermon.external_video_url)?<video key={video?.id||sermon.external_video_url} ref={node=>{media.current=node;}} controls preload='metadata' poster={sermon.image?.url} crossOrigin='anonymous' aria-label={sermon.title} onTimeUpdate={playback} onError={()=>setError('Video is temporarily unavailable. You can try again or listen to the audio version.')}><source src={video?.url||sermon.external_video_url} type={video?.mime_type}/>{caption&&<track kind='captions' src={caption.url} srcLang='en' label='English captions' default/>}Your browser cannot play this video.</video>:
+      mode==='VIDEO'&&sermon.video_embed_url?loaded?<iframe src={sermon.video_embed_url} title={sermon.title} allow='fullscreen; picture-in-picture' allowFullScreen referrerPolicy='no-referrer'/>:<div className='sermon-embed-cover' style={sermon.image?{backgroundImage:`linear-gradient(#071f3455,#071f3477),url("${sermon.image.url}")`}:undefined}><button className='public-button' onClick={()=>setLoaded(true)}><Play size={20} aria-hidden='true'/>Load {sermon.video_source_type==='VIMEO'?'Vimeo':'YouTube'} Video</button><p>The video loads from its provider when you choose to watch.</p></div>:
+      mode==='AUDIO'&&hasAudio?<div className='sermon-audio-panel'><Headphones size={46} aria-hidden='true'/><h2>Listen to this message</h2><audio ref={node=>{media.current=node;}} controls preload='metadata' crossOrigin='anonymous' aria-label={'Audio: '+sermon.title} onTimeUpdate={playback} onError={()=>setError('The audio is temporarily unavailable. Please try again shortly.')} src={audio?.url||sermon.audio_url}/></div>:<div className='sermon-media-empty'><Play size={38} aria-hidden='true'/><p>Media for this message is being prepared.</p></div>}
+    </div>
+    {error&&<p className='public-form-error' role='alert'>{error}</p>}
+    {(video||audio||sermon.external_video_url||sermon.audio_url)&&<label className='sermon-speed'>Playback speed<select aria-label='Playback speed' defaultValue='1' onChange={event=>{if(media.current)media.current.playbackRate=Number(event.target.value);}}>{[.75,1,1.25,1.5,2].map(speed=><option key={speed} value={speed}>{speed}×</option>)}</select></label>}
+    <div className='sermon-downloads'>{sermon.media.filter(item=>item.download_url&&['VIDEO','AUDIO','DOCUMENT','TRANSCRIPT'].includes(item.media_type)).map(item=><a key={item.id} className='public-button public-button-outline' href={item.download_url!}><Download size={18} aria-hidden='true'/>Download {item.media_type==='DOCUMENT'?'Notes':item.media_type[0]+item.media_type.slice(1).toLowerCase()} · {fileSize(item.file_size)}</a>)}<button className='public-button public-button-outline' onClick={async()=>{try{await navigator.clipboard.writeText(canonical||window.location.origin+'/sermons/'+sermon.slug);setCopied(true);}catch{setCopied(false);}}}>{copied?<Check size={18}/>:<Copy size={18}/>} {copied?'Link Copied':'Copy Link'}</button></div>
+  </div>;
+}

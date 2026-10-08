@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from src.api.v1 import auth, health, me, system, workspace, operations, content, donations
+from src.api.v1 import auth, health, me, system, workspace, operations, content, donations, sermons
 
 # Future private/admin routers must add real authentication and permission/scope
 # dependencies before inclusion. A URL prefix is never an access control.
@@ -15,3 +15,5 @@ router.include_router(workspace.router)
 router.include_router(operations.router)
 router.include_router(content.router)
 router.include_router(donations.router)
+
+router.include_router(sermons.router)

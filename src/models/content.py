@@ -1,7 +1,7 @@
 """Editorial content and private inquiries remain separate from church identities."""
 import uuid
 from datetime import date,datetime
-from sqlalchemy import String,Text,Date,DateTime,Boolean,Integer,ForeignKey,CheckConstraint,UniqueConstraint,Index,func
+from sqlalchemy import String,Text,Date,DateTime,Boolean,Integer,ForeignKey,CheckConstraint,UniqueConstraint,Index,func,text
 from sqlalchemy.dialects.postgresql import UUID,JSONB
 from sqlalchemy.orm import Mapped,mapped_column
 from src.database.base import Base
@@ -14,7 +14,7 @@ class ContentEntry(ContentTimes,Base):
     __tablename__='website_content'
     __table_args__=(UniqueConstraint('kind','slug',name='uq_website_kind_slug'),
         CheckConstraint("kind IN ('PAGE','HOMEPAGE','MINISTRY','LEADERSHIP','SERMON','GALLERY','TESTIMONY')",name='ck_website_kind'),
-        CheckConstraint("status IN ('DRAFT','PUBLISHED','ARCHIVED')",name='ck_website_status'),
+        CheckConstraint("status IN ('DRAFT','PUBLISHED','ARCHIVED') OR (kind='SERMON' AND status IN ('PROCESSING','READY','SCHEDULED','FAILED'))",name='ck_website_status'),
         CheckConstraint("status!='PUBLISHED' OR published_data IS NOT NULL",name='ck_website_public_snapshot'),
         Index('ix_website_kind_status','kind','status'))
     id:Mapped[uuid.UUID]=mapped_column(UUID(as_uuid=True),primary_key=True,default=uuid.uuid4)
@@ -140,3 +140,5 @@ class ContentAudit(Base):
     occurred_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),nullable=False)
 
 CONTENT_TABLES=[ContentEntry,WebsiteSettings,WebsiteMedia,ContentMediaLink,Event,Announcement,PublicInquiry,ContentAudit]
+
+Index('ix_sermon_published_date',text("((published_data -> 'data'::text) ->> 'sermon_date'::text)"),postgresql_where=text("kind='SERMON' AND status='PUBLISHED'"),_table=ContentEntry.__table__)

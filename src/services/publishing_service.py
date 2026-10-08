@@ -19,6 +19,8 @@ class PublishingService(ContentBase):
     def list_content(self,kind=None,search='',status='ALL',limit=25,offset=0):
         with self._db('WEBSITE_PAGE_VIEW') as (db,access):
             stmt=select(ContentEntry)
+            if kind=='SERMON':access.require_permission('SERMON_VIEW')
+            elif not access.has_any({'SERMON_VIEW'}):stmt=stmt.where(ContentEntry.kind!='SERMON')
             if kind:stmt=stmt.where(ContentEntry.kind==kind)
             if status!='ALL':stmt=stmt.where(ContentEntry.status==status)
             if search:stmt=stmt.where(ContentEntry.title.ilike('%'+search.replace('%','\\%').replace('_','\\_')+'%',escape='\\'))
@@ -31,9 +33,16 @@ class PublishingService(ContentBase):
         if not row:raise ContentMissing('Content not found.')
         return row
     def get_content(self,entry_id):
-        with self._db('WEBSITE_PAGE_VIEW') as (db,access):return self.entry_dto(self._entry(db,entry_id))
+        with self._db('WEBSITE_PAGE_VIEW') as (db,access):
+            row=self._entry(db,entry_id)
+            if row.kind=='SERMON':access.require_permission('SERMON_VIEW')
+            return self.entry_dto(row)
     def save_content(self,data,entry_id=None):
         values=ContentWrite.model_validate(data)
+        if values.kind=='SERMON':
+            from src.services.sermon_service import SermonService
+            saved=SermonService(self.user_id,self.session_factory).save(values.model_dump(),entry_id)
+            with self._db('SERMON_VIEW') as (db,access):return self.entry_dto(db.get(ContentEntry,ident(saved['id'])))
         with self._db('WEBSITE_PAGE_EDIT' if entry_id else 'WEBSITE_PAGE_CREATE') as (db,access):
             access.require_permission('WEBSITE_PAGE_VIEW')
             row=self._entry(db,entry_id) if entry_id else None
@@ -61,6 +70,12 @@ class PublishingService(ContentBase):
         valid=set(db.scalars(select(WebsiteMedia.id).where(WebsiteMedia.id.in_(ids),WebsiteMedia.status=='PUBLISHED',WebsiteMedia.consent_attested.is_(True))))
         if valid!=set(ids):raise ContentError('Review and approve every selected image before publishing.')
     def content_action(self,entry_id,action,expected):
+        with self._db('WEBSITE_PAGE_VIEW') as (db,access):
+            is_sermon=self._entry(db,entry_id).kind=='SERMON'
+        if is_sermon:
+            from src.services.sermon_service import SermonService
+            SermonService(self.user_id,self.session_factory).action(entry_id,action,expected)
+            with self._db('SERMON_VIEW') as (db,access):return self.entry_dto(db.get(ContentEntry,ident(entry_id)))
         with self._db('WEBSITE_PAGE_PUBLISH') as (db,access):
             access.require_permission('WEBSITE_PAGE_VIEW');row=self._entry(db,entry_id);check_version(row,expected)
             if action=='publish':
@@ -91,7 +106,16 @@ class PublishingService(ContentBase):
             row=db.scalar(select(WebsiteSettings).where(WebsiteSettings.id==1).with_for_update().execution_options(populate_existing=True))
             if row:check_version(row,expected)
             else:row=WebsiteSettings(id=1,draft_data={});db.add(row)
-            row.draft_data=values.model_dump(mode='json');row.updated_by=access.user_id;row.updated_at=now()
+            from uuid import uuid4
+            from datetime import datetime
+            previous={item.get('id'):item for item in row.draft_data.get('service_times',[]) if item.get('id')}
+            stamp=now()
+            for service in values.service_times:
+                service.id=service.id or uuid4()
+                old=previous.get(str(service.id),{})
+                service.created_at=datetime.fromisoformat(old['created_at'].replace('Z','+00:00')) if old.get('created_at') else stamp
+                service.updated_at=stamp
+            row.draft_data=values.model_dump(mode='json');row.updated_by=access.user_id;row.updated_at=stamp
             self.audit(db,access,'SETTINGS',None,'SETTINGS_DRAFT_UPDATED');db.commit()
             return dict(data=row.draft_data,updated_at=row.updated_at,published_at=row.published_at)
     def publish_settings(self,expected):

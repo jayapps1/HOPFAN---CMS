@@ -6,7 +6,7 @@ export const modules: ModuleDefinition[] = [
   { id:"events",label:"Events",icon:"calendar",description:"Scoped event planning and approved publication.",global:["EVENT_VIEW_ALL"],scoped:["EVENT_VIEW_OWN_MINISTRY"] },
   { id:"announcements",label:"Announcements",icon:"message",description:"Approved church and ministry communications.",global:["ANNOUNCEMENT_VIEW_ALL"],scoped:["ANNOUNCEMENT_VIEW_OWN_MINISTRY"] },
   { id:"visitors",label:"Visitors",icon:"users",description:"Private visitor inquiries and reviewed Member conversion.",global:[],grants:["VISITOR_VIEW_ALL","VISITOR_VIEW_OWN"] },
-  { id:"website",label:"Website",icon:"site",description:"Drafts, public pages, sermons, gallery and publishing.",global:[],grants:["WEBSITE_PAGE_VIEW"] },
+  { id:"website",label:"Website",icon:"site",description:"Drafts, public pages, sermons, gallery and publishing.",global:[],grants:["WEBSITE_PAGE_VIEW","SERMON_VIEW"] },
   { id:"prayer-requests",label:"Prayer requests",icon:"heart",description:"Private pastoral prayer follow-up.",global:[],grants:["PRAYER_REQUEST_VIEW"] },
   { id: "members", label: "Members", icon: "users", description: "Member records and the people in your church community.", global: ["MEMBERS_VIEW_ALL"], scoped: ["MEMBERS_VIEW_OWN_MINISTRY"] },
   { id: "households", label: "Households", icon: "house", description: "Family relationships and household connections.", global: ["HOUSEHOLD_VIEW_ALL"], grants: ["HOUSEHOLD_VIEW"] },

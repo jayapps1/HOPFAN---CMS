@@ -1,5 +1,6 @@
 """Small ASGI middleware: safe errors, host checks and secret-free request logs."""
 import logging
+import re
 import time
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -18,6 +19,10 @@ class RequestBodyLimitMiddleware:
         self.app,self.limit=app,limit
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
         if scope["type"]!="http" or scope["method"] not in {"POST","PATCH","PUT"}:
+            return await self.app(scope,receive,send)
+        # Binary sermon uploads authenticate before reading and enforce per-type
+        # limits while streaming to private staging. Never buffer a large video.
+        if scope['method']=='POST' and re.fullmatch(r'/api/v1/sermons/[a-f0-9-]{36}/media',scope.get('path','')):
             return await self.app(scope,receive,send)
         headers=Headers(scope=scope)
         try:length=int(headers.get("content-length","0"))

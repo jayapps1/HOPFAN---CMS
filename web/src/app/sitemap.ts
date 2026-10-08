@@ -10,5 +10,6 @@ export default async function sitemap():Promise<MetadataRoute.Sitemap>{
       entries.push(...data.items.map(item=>({url:origin+"/"+section+"/"+item.slug})));if(page>=data.pages)break;page++;
     }
   }
+  const series=await getPublic<{slug:string}[]>('sermon-series');if(series)entries.push(...series.map(item=>({url:origin+'/sermons/series/'+item.slug})));
   return entries;
 }

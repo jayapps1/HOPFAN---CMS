@@ -75,3 +75,5 @@ __all__ = [
     "AuthorizationAuditLog",
 ]
 from src.models.donation import Donation,DonationCategory
+
+from src.models.sermon import SermonSeries,SermonCategory,SermonMediaAsset,SermonMetric,SermonPlaybackReceipt

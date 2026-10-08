@@ -105,6 +105,27 @@ export class ApiClient {
     if (!path.startsWith("/api/v1/")) throw new Error("Invalid API resource");
     return this.parse(await this.request(path, { method, body, authenticated: true, csrf: true }), decoder);
   }
+  sermonMediaUrl(path:string):string{
+    if(!/^\/api\/v1\/(?:sermons\/[a-f0-9-]{36}\/media\/[a-f0-9-]{36}\/preview|public\/sermons\/[a-z0-9-]+\/(?:media\/[a-f0-9-]{36}|download\/[a-z]+))$/.test(path))return '';
+    return this.baseUrl+path;
+  }
+  async uploadSermon(path:string,file:File,kind:string,rights:boolean,download:boolean,onProgress:(percent:number)=>void,signal:AbortSignal):Promise<unknown>{
+    if(!/^\/api\/v1\/sermons\/[a-f0-9-]{36}\/media$/.test(path))throw new Error('Invalid media upload');
+    const csrf=await this.csrf();
+    return new Promise((resolve,reject)=>{
+      const request=new XMLHttpRequest();const query=new URLSearchParams({filename:file.name,media_type:kind,rights_attested:String(rights),download_allowed:String(download)});
+      request.open('POST',this.baseUrl+path+'?'+query);request.withCredentials=true;request.responseType='json';request.timeout=30*60*1000;
+      request.setRequestHeader('Content-Type',file.type||'application/octet-stream');request.setRequestHeader('X-CSRF-Token',csrf.csrf_token);
+      request.upload.onprogress=event=>{if(event.lengthComputable)onProgress(Math.round(event.loaded/event.total*100));};
+      const abort=()=>request.abort();signal.addEventListener('abort',abort,{once:true});
+      const done=()=>signal.removeEventListener('abort',abort);
+      request.onerror=()=>{done();reject(new ApiError(0,'NETWORK_ERROR','Upload failed. Check the connection and try again.'));};
+      request.ontimeout=()=>{done();reject(new ApiError(0,'UPLOAD_TIMEOUT','Upload timed out. Please try again.'));};
+      request.onabort=()=>{done();reject(new ApiError(0,'UPLOAD_CANCELLED','Upload cancelled.'));};
+      request.onload=()=>{done();if(request.status===202)resolve(request.response);else reject(new ApiError(request.status,'UPLOAD_FAILED',request.status===413?'This file exceeds the configured upload limit.':request.status===403?'You do not have upload permission.':'The upload could not be accepted. Check the file type and authorization.'));};
+      if(signal.aborted){done();reject(new ApiError(0,'UPLOAD_CANCELLED','Upload cancelled.'));return;}request.send(file);
+    });
+  }
   async publicMutation<T>(path:string,body:unknown,decoder:(value:unknown)=>T):Promise<T>{
     if(!path.startsWith('/api/v1/public/'))throw new Error('Invalid public resource');
     return this.parse(await this.request(path,{method:'POST',body,credentials:'omit',authenticated:false}),decoder);

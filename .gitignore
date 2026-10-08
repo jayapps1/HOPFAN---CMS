@@ -30,3 +30,6 @@ web/*.log
 
 # Local browser-validation diagnostics.
 web/.logs/
+
+# Private development sermon files.
+storage/

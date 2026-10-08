@@ -135,7 +135,7 @@ def public_content_routes(kind,path,response_model):
     router.add_api_route('/public/'+path,listing,methods=['GET'],response_model=Page[response_model],name='public_'+path+'_list')
     router.add_api_route('/public/'+path+'/{slug}',detail,methods=['GET'],response_model=response_model,name='public_'+path+'_detail')
 for kind,path,schema in [('PAGE','pages',PublicPage),('MINISTRY','ministries',PublicMinistry),('LEADERSHIP','leadership',PublicLeadership),
-    ('SERMON','sermons',PublicSermon),('GALLERY','gallery',PublicGallery),('TESTIMONY','testimonies',PublicPage)]:
+    ('GALLERY','gallery',PublicGallery),('TESTIMONY','testimonies',PublicPage)]:
     public_content_routes(kind,path,schema)
 @router.get('/public/events',response_model=Page[PublicEvent])
 def public_events(service:Public,past:bool=False,page_number:Number=1,page_size:Size=25):

@@ -5,6 +5,7 @@ Never import this from the production API. No production identity is changed.
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 import json
+import subprocess,os
 import shutil
 from pathlib import Path
 import re
@@ -41,6 +42,9 @@ from src.services.website_media_service import LocalWebsiteStorage
 from src.services.content_contracts import ContentWrite,SiteConfiguration
 from src.models import ContentEntry,WebsiteMedia,ContentMediaLink,WebsiteSettings,Event,Announcement
 from PIL import Image
+from src.models.sermon import SermonSeries,SermonCategory,SermonMediaAsset
+from src.services.sermon_contracts import SermonWrite
+from src.services.sermon_storage import MediaStorageService,SermonStorageSettings
 from tests.payment_fixtures import TestPaystack
 from src.models import DonationCategory
 
@@ -146,7 +150,7 @@ async def lifespan(_app):
                 status='PUBLISHED',consent_attested=True,contains_children=False,consent_reference='Synthetic test fixture')
             db.add(asset);db.flush()
             configuration=SiteConfiguration(church_name='HOPFAN',tagline='Synthetic public website fixture',address='Synthetic test location',
-                public_email='church@example.invalid',public_phone='0000000000',service_times=[{'name':'Synthetic worship','schedule':'Sunday, fixture time'}])
+                public_email='church@example.invalid',public_phone='0000000000',timezone='UTC',service_times=[dict(id=str(uuid4()),name=name,day_of_week=day,start_time=start,end_time=end,display_order=order) for order,(name,day,start,end) in enumerate([('Sunday Service','SUNDAY','07:00','10:00'),('Wednesday Service','WEDNESDAY','09:00','12:00'),('Friday Evening Service','FRIDAY','18:30','21:00')])])
             db.add(WebsiteSettings(id=1,draft_data=configuration.model_dump(mode='json'),published_data=configuration.model_dump(mode='json'),published_at=datetime.now(timezone.utc)))
             for kind,slug,title in [('HOMEPAGE','home','Synthetic homepage'),('PAGE','about','About HOPFAN'),('PAGE','sunday-school','Sunday School'),
                 ('MINISTRY','youth','Youth public ministry'),('LEADERSHIP','synthetic-leader','Synthetic church leader'),('SERMON','fixture-message','Synthetic message'),('GALLERY','fixture-album','Synthetic church gallery')]:
@@ -162,7 +166,30 @@ async def lifespan(_app):
                 slug=f'synthetic-leader-{index}'
                 snapshot=ContentWrite.model_validate(dict(kind='LEADERSHIP',slug=slug,title=f'Synthetic leader {index}',summary='Published synthetic ministry responsibility.',data={'public_name':f'Synthetic leader {index}','public_title':'Synthetic ministry leader','display_order':index})).model_dump(mode='json',exclude={'expected_updated_at','ministry_id','member_id'})
                 db.add(ContentEntry(kind='LEADERSHIP',slug=slug,title=snapshot['title'],draft_data=snapshot,published_data=snapshot,status='PUBLISHED',published_at=datetime.now(timezone.utc)))
+            # Playable sermon files are generated only inside this disposable fixture.
+            sermon_storage=MediaStorageService(SermonStorageSettings(root=MEDIA_DIR/'sermons'))
+            sample_video=MEDIA_DIR/'synthetic-sermon.mp4';sample_audio=MEDIA_DIR/'synthetic-sermon.wav';sample_image=MEDIA_DIR/'synthetic-thumb.jpg'
+            ff_flags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0
+            subprocess.run(['ffmpeg','-v','error','-y','-f','lavfi','-i','color=c=navy:s=640x360:d=15','-f','lavfi','-i','sine=frequency=440:duration=15','-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac','-movflags','+faststart','-shortest',str(sample_video)],capture_output=True,check=True,timeout=30,creationflags=ff_flags)
+            subprocess.run(['ffmpeg','-v','error','-y','-f','lavfi','-i','sine=frequency=440:duration=15','-c:a','pcm_s16le',str(sample_audio)],capture_output=True,check=True,timeout=20,creationflags=ff_flags)
+            Image.new('RGB',(1280,720),'#0b3151').save(sample_image)
+            series=SermonSeries(name='Synthetic Sermon Series',slug='synthetic-sermon-series',status='PUBLISHED',published_data={'name':'Synthetic Sermon Series','slug':'synthetic-sermon-series','description':'Synthetic playlist fixture','cover_image_id':str(asset.id)},published_at=datetime.now(timezone.utc))
+            category=SermonCategory(name='Synthetic Prayer',slug='synthetic-prayer-category',status='PUBLISHED',published_data={'name':'Synthetic Prayer','slug':'synthetic-prayer-category','description':'Synthetic category fixture'},published_at=datetime.now(timezone.utc))
+            db.add_all([series,category]);db.flush()
+            sermon_id=uuid4();video_id=uuid4();audio_id=uuid4();thumb_id=uuid4()
+            values=SermonWrite(title='Synthetic Hosted Sermon',slug='synthetic-hosted-sermon',speaker_name='Synthetic Pastor',sermon_date='2026-10-08',description='Approved synthetic sermon description for browser tests.',short_description='Watch or listen to this synthetic media fixture.',visibility='PUBLIC',featured=True,series_id=series.id,category_id=category.id,tags=['synthetic','prayer'],video_source_type='UPLOADED',video_asset_id=video_id,audio_asset_id=audio_id,thumbnail_asset_id=thumb_id,allow_audio_download=True,allow_video_download=False).editorial().model_dump(mode='json',exclude={'expected_updated_at','member_id','ministry_id'})
+            db.add(ContentEntry(id=sermon_id,kind='SERMON',slug=values['slug'],title=values['title'],draft_data=values,published_data=values,status='PUBLISHED',published_at=datetime.now(timezone.utc),created_by=account_users['admin'].id,published_by=account_users['admin'].id));db.flush()
+            for aid,kind,path,mime,extension in [(video_id,'VIDEO',sample_video,'video/mp4','mp4'),(audio_id,'AUDIO',sample_audio,'audio/wav','wav'),(thumb_id,'THUMBNAIL',sample_image,'image/jpeg','jpg')]:
+                key=f'sermons/{sermon_id}/{aid}.{extension}';sermon_storage.upload(key,path,mime)
+                db.add(SermonMediaAsset(id=aid,sermon_id=sermon_id,media_type=kind,storage_provider='LOCAL',storage_key=key,original_filename=path.name,mime_type=mime,file_size=path.stat().st_size,format=extension,duration_seconds=15 if kind!='THUMBNAIL' else None,width=640 if kind=='VIDEO' else 1280 if kind=='THUMBNAIL' else None,height=360 if kind=='VIDEO' else 720 if kind=='THUMBNAIL' else None,processing_status='READY',rights_attested=True,download_allowed=True,quality_label='360p' if kind=='VIDEO' else ''))
+            fixture_data.update(sermon_id=str(sermon_id),sermon_slug='synthetic-hosted-sermon',series_slug=series.slug)
+            app.state.sermon_storage=sermon_storage
+
             db.add(DonationCategory(name='Reviewed fixture offering',display_order=0))
+            for index in range(1,5):
+                db.add(Event(slug=f'synthetic-upcoming-{index}',title=f'Synthetic upcoming event {index}',description='Approved synthetic event summary, used only in the isolated browser fixture.',scope='CHURCH_WIDE',visibility='PUBLIC',status='PUBLISHED',start_datetime=datetime.now(timezone.utc)+timedelta(days=index),location='Synthetic venue',image_id=asset.id if index!=2 else None,published_at=datetime.now(timezone.utc)))
+            db.add(Event(slug='synthetic-draft',title='Synthetic private draft event',scope='CHURCH_WIDE',visibility='PUBLIC',status='DRAFT',start_datetime=datetime.now(timezone.utc)+timedelta(days=2)))
+            db.add(Event(slug='synthetic-past',title='Synthetic past event',scope='CHURCH_WIDE',visibility='PUBLIC',status='PUBLISHED',start_datetime=datetime.now(timezone.utc)-timedelta(days=4)))
             db.add(Event(slug='fixture-event',title='Synthetic community event',description='A synthetic public event fixture.',scope='CHURCH_WIDE',visibility='PUBLIC',status='PUBLISHED',start_datetime=datetime.now(timezone.utc)+timedelta(days=5),location='Synthetic venue',published_at=datetime.now(timezone.utc)))
             db.add(Announcement(slug='fixture-notice',title='Synthetic announcement',body='An approved synthetic notice.',scope='CHURCH_WIDE',audience='BOTH',status='PUBLISHED',published_at=datetime.now(timezone.utc)))
             db.commit()
@@ -232,3 +259,28 @@ def payment_status(reference:str,status:str):
     if status not in {'success','failed','abandoned','pending'} or reference not in app.state.payment_provider.transactions:raise HTTPException(404)
     app.state.payment_provider.transactions[reference]['status']=status
     return {'configured':True}
+
+
+_hidden_home_events={}
+@app.post('/_test/home-events',dependencies=[Depends(loopback)])
+def show_home_events(visible:bool):
+    with factory() as db:
+        if visible:
+            for event_id,status in _hidden_home_events.items():
+                event=db.get(Event,event_id)
+                if event:event.status=status
+            _hidden_home_events.clear()
+        else:
+            for event in db.scalars(select(Event).where(Event.status=='PUBLISHED',Event.visibility.in_(('PUBLIC','BOTH')),Event.start_datetime>=datetime.now(timezone.utc))):
+                _hidden_home_events[event.id]=event.status;event.status='DRAFT'
+        db.commit()
+    return {'configured':True}
+
+
+@app.get('/_test/sermon-file/{kind}',dependencies=[Depends(loopback)])
+def sermon_file(kind:str):
+    from starlette.responses import FileResponse
+    files={'video':('synthetic-sermon.mp4','video/mp4'),'audio':('synthetic-sermon.wav','audio/wav'),'thumbnail':('synthetic-thumb.jpg','image/jpeg')}
+    if kind not in files:raise HTTPException(404)
+    name,mime=files[kind]
+    return FileResponse(MEDIA_DIR/name,media_type=mime,filename=name)
